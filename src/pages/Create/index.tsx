@@ -157,15 +157,10 @@ export default function Create() {
       const body: Record<string, unknown> = {
         eventName: form.eventName.trim(),
         rankingExposed: form.rankingExposed,
-        allowServiceMemberLogin: form.allowServiceMemberLogin,
-        allowRoomMemberSignup: form.allowRoomMemberSignup,
-        requiredProfileFields: form.requirePhoneNumber ? ['PHONE_NUMBER'] : [],
-        entryTicketTtlSeconds: 600,
+        isPublic: true,
       }
       if (form.openAt) {
-        // datetime-local → ISO 8601 with timezone
-        const date = new Date(form.openAt)
-        body.openAt = date.toISOString()
+        body.openAt = new Date(form.openAt).toISOString()
       }
       if (form.participantLimit) {
         body.participantLimit = Number(form.participantLimit)

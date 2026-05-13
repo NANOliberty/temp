@@ -4,7 +4,7 @@ export interface Room {
   isRankingPublic: boolean
   openAt: string | null
   maxEntries: number | null
-  status: 'OPEN' | 'CLOSED' | 'DELETED'
+  status: 'READY' | 'OPEN' | 'CLOSED' | 'DELETED'
   entryCount: number
 }
 
