@@ -87,8 +87,8 @@ src/
 | Member Auth | `POST /auth/reissue` | O 인터셉터 적용 |
 | Member Auth | `POST /auth/logout` | O |
 | Member Auth | `DELETE /auth/withdraw` | X |
-| Guest Auth | `POST /rooms/{roomCode}/auth/signup` | 미구현 |
-| Guest Auth | `POST /rooms/{roomCode}/auth/login` | 미구현 |
+| Guest Auth | `POST /rooms/{roomCode}/auth/signup` | X |
+| Guest Auth | `POST /rooms/{roomCode}/auth/login` | X |
 | Room | `GET /rooms/{roomCode}` | 미구현 |
 | Room | `GET /rooms/{roomCode}/rankings` | 미구현 |
 | Entry | `POST /rooms/{roomCode}/entries` | 미구현 |
@@ -99,6 +99,9 @@ src/
 | Member Room | `GET /host/rooms` | 미구현 |
 | Member Room | `GET /host/rooms/{roomId}` | 미구현 |
 | Member Room | `GET /host/rooms/{roomId}/participants` | 미구현 |
-| Member Room | `PATCH /host/rooms/{roomId}` | 미구현 |
-| Member Room | `DELETE /host/rooms/{roomId}` | 미구현 |
+| Member Room | `PATCH /host/rooms/{roomId}` | X |
+| Member Room | `DELETE /host/rooms/{roomId}` | X |
 | Room Profile | `PATCH /rooms/{roomCode}/me` | 미구현 |
+| Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/authorize` | 추가 예정 |
+| Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/callback` | 추가 예정 |
+| Room Account Link | `GET /rooms/{roomCode}/me/account-link` | 추가 예정 |
