@@ -91,17 +91,17 @@ src/
 | Guest Auth | `POST /rooms/{roomCode}/auth/login` | X |
 | Room | `GET /rooms/{roomCode}` | 미구현 |
 | Room | `GET /rooms/{roomCode}/rankings` | 미구현 |
-| Entry | `POST /rooms/{roomCode}/entries` | 미구현 |
-| Entry | `GET /rooms/{roomCode}/entries/me` | 미구현 |
-| Entry Ticket | `GET /entry-tickets/{ticketToken}` | 미구현 |
-| Entry Ticket | `POST /entry-tickets/{ticketToken}/claim` | 미구현 |
+| Entry | `POST /rooms/{roomCode}/entries` | X |
+| Entry | `GET /rooms/{roomCode}/entries/me` | X |
+| Entry Ticket | `GET /entry-tickets/{ticketToken}` | X |
+| Entry Ticket | `POST /entry-tickets/{ticketToken}/claim` | X |
 | Member Room | `POST /host/rooms` | O |
-| Member Room | `GET /host/rooms` | 미구현 |
-| Member Room | `GET /host/rooms/{roomId}` | 미구현 |
+| Member Room | `GET /host/rooms` | X |
+| Member Room | `GET /host/rooms/{roomId}` | X |
 | Member Room | `GET /host/rooms/{roomId}/participants` | 미구현 |
 | Member Room | `PATCH /host/rooms/{roomId}` | X |
 | Member Room | `DELETE /host/rooms/{roomId}` | X |
-| Room Profile | `PATCH /rooms/{roomCode}/me` | 미구현 |
-| Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/authorize` | 추가 예정 |
-| Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/callback` | 추가 예정 |
-| Room Account Link | `GET /rooms/{roomCode}/me/account-link` | 추가 예정 |
+| Room Profile | `PATCH /rooms/{roomCode}/me` | X |
+| Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/authorize` | X |
+| Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/callback` | X |
+| Room Account Link | `GET /rooms/{roomCode}/me/account-link` | X |
