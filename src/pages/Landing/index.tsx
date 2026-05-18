@@ -116,7 +116,7 @@ export default function Landing() {
                 </div>
               ))}
             </div>
-            <button className="mock-cta">⚡ 지금 응모하기</button>
+            <button className="mock-cta">지금 응모하기</button>
           </div>
         </div>
       </div>
@@ -185,7 +185,7 @@ export default function Landing() {
             <div className="step-vis">
               <div className="vis">
                 <div className="apply-wrap">
-                  <button className="big-btn">⚡ 지금 응모하기</button>
+                  <button className="big-btn">지금 응모하기</button>
                   <div className="apply-ts">클릭한 순간 <strong>09:00:00.312</strong> 기록</div>
                 </div>
               </div>

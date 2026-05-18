@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getRoom, getRoomRankings, postEntry, getMyEntry } from '../../api'
+import { postEntry } from '../../api'
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry } from '../../types'
-
-const IS_HOST_MOCK = false // 호스트 뷰 목업 켜기/끄기
+import client from '../../api/client'
 
 function LogoMark() {
   return (
@@ -33,49 +32,27 @@ function LogoMark() {
   )
 }
 
-function NavBar({ isLoggedIn, onLogoClick, onNavClick, showSettings }: {
+function NavBar({ isLoggedIn, onLogoClick, onNavClick, showSettings, onSettingsClick }: {
   isLoggedIn: boolean
   onLogoClick: () => void
   onNavClick: () => void
   showSettings?: boolean
+  onSettingsClick?: () => void
 }) {
   return (
-    <nav style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '18px 52px',
-      background: 'rgba(255,255,255,.85)',
-      backdropFilter: 'blur(20px)',
-      borderBottom: '1px solid #eaeaee',
-    }}>
+    <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 52px', background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #eaeaee' }}>
       <div onClick={onLogoClick} style={{ cursor: 'pointer' }}><LogoMark /></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {showSettings && (
-          <button style={{
-            background: '#f7f7f9', border: '1.5px solid #eaeaee', borderRadius: 8,
-            padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            fontFamily: "'Noto Sans KR', sans-serif", color: '#54546e',
-            transition: 'border-color .15s',
-          }}
+          <button onClick={onSettingsClick} style={{ background: '#f7f7f9', border: '1.5px solid #eaeaee', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", color: '#54546e' }}
             onMouseEnter={e => e.currentTarget.style.borderColor = '#d2d2dc'}
             onMouseLeave={e => e.currentTarget.style.borderColor = '#eaeaee'}
-          >
-            설정
-          </button>
+          >설정</button>
         )}
-        <button onClick={onNavClick}
-          style={{
-            background: '#f55a2b', color: '#fff', border: 'none', cursor: 'pointer',
-            padding: '9px 18px', borderRadius: 8,
-            fontSize: 13.5, fontWeight: 700,
-            fontFamily: "'Noto Sans KR', sans-serif",
-            transition: 'background .15s',
-          }}
+        <button onClick={onNavClick} style={{ background: '#f55a2b', color: '#fff', border: 'none', cursor: 'pointer', padding: '9px 18px', borderRadius: 8, fontSize: 13.5, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif" }}
           onMouseEnter={e => e.currentTarget.style.background = '#e04d22'}
           onMouseLeave={e => e.currentTarget.style.background = '#f55a2b'}
-        >
-          {isLoggedIn ? 'MY 방' : '로그인'}
-        </button>
+        >{isLoggedIn ? '내 방' : '로그인'}</button>
       </div>
     </nav>
   )
@@ -85,6 +62,7 @@ export default function Room() {
   const { roomCode } = useParams<{ roomCode: string }>()
   const navigate = useNavigate()
   const isLoggedIn = !!localStorage.getItem('accessToken')
+  const isHost = (JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]).includes(roomCode ?? '')
 
   const [room, setRoom] = useState<Room | null>(USE_MOCK ? MOCK_ROOM : null)
   const [rankings, setRankings] = useState<RankingItem[]>(USE_MOCK ? MOCK_RANKINGS : [])
@@ -97,19 +75,39 @@ export default function Room() {
 
   useEffect(() => {
     if (!roomCode || USE_MOCK) return
-    Promise.all([
-      getRoom(roomCode),
-      getRoomRankings(roomCode),
-      isLoggedIn ? getMyEntry(roomCode) : Promise.resolve(null),
-    ])
-      .then(([roomRes, rankRes, entryRes]) => {
-        setRoom(roomRes.data)
-        setRankings(rankRes.data.content)
-        if (entryRes) setMyEntry(entryRes.data)
-      })
-      .catch(() => setError('방을 찾을 수 없습니다.'))
-      .finally(() => setLoading(false))
-  }, [roomCode, isLoggedIn])
+
+    if (isHost) {
+      // host는 /host/rooms/{roomId} 로 조회
+      client.get(`/host/rooms/${roomCode}`)
+        .then(res => {
+          const d = res.data.data
+          setRoom({
+            title: d.eventName,
+            status: d.roomStatus,
+            openAt: d.openAt,
+            isRankingPublic: d.rankingExposed,
+            entryCount: d.participantCount ?? d.summary?.participantCount ?? 0,
+            maxEntries: d.participantLimit && d.participantLimit < 2000000000 ? d.participantLimit : null,
+          } as Room)
+        })
+        .catch(() => setError('방을 찾을 수 없습니다.'))
+        .finally(() => setLoading(false))
+    } else {
+      // 참여자는 공개 API (미구현 시 에러)
+      Promise.all([
+        client.get(`/rooms/${roomCode}`),
+        client.get(`/rooms/${roomCode}/rankings`),
+        isLoggedIn ? client.get(`/rooms/${roomCode}/entries/me`) : Promise.resolve(null),
+      ])
+        .then(([roomRes, rankRes, entryRes]) => {
+          setRoom(roomRes.data.data)
+          setRankings(rankRes.data.data?.content ?? [])
+          if (entryRes) setMyEntry(entryRes.data.data)
+        })
+        .catch(() => setError('방을 찾을 수 없습니다.'))
+        .finally(() => setLoading(false))
+    }
+  }, [roomCode, isLoggedIn, isHost])
 
   const handleApply = async () => {
     if (!isLoggedIn) { setShowNicknameModal(true); return }
@@ -164,7 +162,7 @@ export default function Room() {
   if (!room) return null
 
   // ── HOST 뷰 ──
-  if (IS_HOST_MOCK) {
+  if (isHost) {
     const shareUrl = `${window.location.origin}/r/${roomCode}`
     const statusMap: Record<string, { label: string; color: string; bg: string }> = {
       READY:  { label: '대기 중', color: '#3b82f6', bg: '#eff6ff' },
@@ -175,15 +173,9 @@ export default function Room() {
 
     return (
       <div style={{ minHeight: '100vh', background: '#f7f7f9', fontFamily: "'Noto Sans KR', sans-serif" }}>
-        <NavBar
-          isLoggedIn={isLoggedIn}
-          onLogoClick={() => navigate('/')}
-          onNavClick={() => navigate(isLoggedIn ? '/my' : '/login')}
-          showSettings
-        />
+        <NavBar isLoggedIn={isLoggedIn} onLogoClick={() => navigate('/')} onNavClick={() => navigate('/my')}
+          showSettings onSettingsClick={() => navigate(`/host/${roomCode}/settings`)} />
         <div style={{ maxWidth: 760, margin: '0 auto', padding: '100px 24px 60px' }}>
-        <div style={{ marginBottom: 24 }}></div>
-          {/* 헤더 — 박스 없이 */}
           <div style={{ marginBottom: 24 }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: status.bg, borderRadius: 100, padding: '3px 10px', marginBottom: 14 }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: status.color }} />
@@ -191,18 +183,12 @@ export default function Room() {
             </div>
             <h1 style={{ fontSize: 24, fontWeight: 900, letterSpacing: -1, color: '#0d0d17', marginBottom: 6 }}>{room.title}</h1>
             <p style={{ fontSize: 13, color: '#9898b2', fontFamily: "'DM Mono', monospace", marginBottom: 20 }}>선착순 시작: {formatDate(room.openAt)}</p>
-
-            {/* 공유 링크 */}
             <div style={{ background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ flex: 1, fontSize: 12, color: '#54546e', fontFamily: "'DM Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shareUrl}</span>
-              <button
-                onClick={() => navigator.clipboard.writeText(shareUrl).then(() => alert('복사됐어요!'))}
-                style={{ background: '#0d0d17', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", flexShrink: 0 }}
-              >복사</button>
+              <button onClick={() => navigator.clipboard.writeText(shareUrl).then(() => alert('복사됐어요!'))} style={{ background: '#0d0d17', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", flexShrink: 0 }}>복사</button>
             </div>
           </div>
 
-          {/* 통계 카드 */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
             {[
               { label: '총 참여자', value: `${room.entryCount}명`, color: '#f55a2b' },
@@ -216,19 +202,13 @@ export default function Room() {
             ))}
           </div>
 
-          {/* 랭킹 카드 */}
           <div style={{ background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 16, padding: '28px 32px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0d0d17', letterSpacing: -.3 }}>랭킹</h2>
-              </div>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9898b2', fontFamily: "'Noto Sans KR', sans-serif", textDecoration: 'underline' }}>
-                전체 참가자 보기 →
-              </button>
+              <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0d0d17', letterSpacing: -.3 }}>랭킹</h2>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9898b2', fontFamily: "'Noto Sans KR', sans-serif", textDecoration: 'underline' }}>전체 참가자 보기 →</button>
             </div>
             <RankingList rankings={rankings} />
           </div>
-
         </div>
       </div>
     )
@@ -237,13 +217,8 @@ export default function Room() {
   // ── 참여자 뷰 ──
   return (
     <div style={{ minHeight: '100vh', background: '#fff', fontFamily: "'Noto Sans KR', sans-serif" }}>
-      <NavBar
-        isLoggedIn={isLoggedIn}
-        onLogoClick={() => navigate('/')}
-        onNavClick={() => navigate(isLoggedIn ? '/my' : '/login')}
-      />
+      <NavBar isLoggedIn={isLoggedIn} onLogoClick={() => navigate('/')} onNavClick={() => navigate(isLoggedIn ? '/my' : '/login')} />
       <div style={{ maxWidth: 600, margin: '0 auto', padding: '100px 24px 60px' }}>
-
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{ display: 'inline-block', fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: 2, color: '#f55a2b', textTransform: 'uppercase' as const, background: 'rgba(245,90,43,.09)', border: '1px solid rgba(245,90,43,.2)', borderRadius: 100, padding: '4px 14px', marginBottom: 16 }}>
             {room.status === 'OPEN' ? '● 진행 중' : room.status === 'READY' ? '대기 중' : '마감'}
@@ -252,34 +227,24 @@ export default function Room() {
           <p style={{ fontSize: 13, color: '#9898b2', fontFamily: "'DM Mono', monospace" }}>선착순 시작: {formatDate(room.openAt)}</p>
         </div>
 
-{myEntry?.status === 'CONFIRMED' ? (
-  <div style={{ textAlign: 'center', marginBottom: 48 }}>
-    <div style={{
-      display: 'inline-block',
-      background: '#f0fdf4', borderRadius: 16,
-      padding: '24px 48px', marginBottom: 8,
-    }}>
-      <div style={{ fontSize: 52, fontWeight: 900, color: '#16a34a', letterSpacing: -2 }}>
-        {myEntry.rank}등
-      </div>
-    </div>
-    <p style={{ fontSize: 14, color: '#9898b2' }}>나의 응모 순위</p>
-    {!isLoggedIn && (
-      <p style={{ fontSize: 13, color: '#54546e', marginTop: 12 }}>
-        로그인하면 이 등수를 이어받을 수 있어요.{' '}
-        <button onClick={() => navigate('/login')} style={{ color: '#f55a2b', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'Noto Sans KR', sans-serif" }}>로그인 →</button>
-      </p>
-    )}
-  </div>
+        {myEntry?.status === 'CONFIRMED' ? (
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ display: 'inline-block', background: '#f0fdf4', borderRadius: 16, padding: '24px 48px', marginBottom: 8 }}>
+              <div style={{ fontSize: 52, fontWeight: 900, color: '#16a34a', letterSpacing: -2 }}>{myEntry.rank}등</div>
+            </div>
+            <p style={{ fontSize: 14, color: '#9898b2' }}>나의 응모 순위</p>
+            {!isLoggedIn && (
+              <p style={{ fontSize: 13, color: '#54546e', marginTop: 12 }}>
+                로그인하면 이 등수를 이어받을 수 있어요.{' '}
+                <button onClick={() => navigate('/login')} style={{ color: '#f55a2b', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'Noto Sans KR', sans-serif" }}>로그인 →</button>
+              </p>
+            )}
+          </div>
         ) : (
           <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <button
-              onClick={handleApply}
-              disabled={applying || room.status !== 'OPEN'}
+            <button onClick={handleApply} disabled={applying || room.status !== 'OPEN'}
               style={{ background: room.status === 'OPEN' ? '#f55a2b' : '#eaeaee', color: room.status === 'OPEN' ? '#fff' : '#9898b2', border: 'none', cursor: room.status === 'OPEN' && !applying ? 'pointer' : 'not-allowed', padding: '16px 52px', borderRadius: 12, fontSize: 17, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif", opacity: applying ? 0.6 : 1, boxShadow: room.status === 'OPEN' ? '0 8px 24px rgba(245,90,43,.28)' : 'none', marginBottom: 14 }}
-            >
-              {applying ? '응모 중...' : room.status === 'OPEN' ? '응모하기' : '마감됨'}
-            </button>
+            >{applying ? '응모 중...' : room.status === 'OPEN' ? '응모하기' : '마감됨'}</button>
             {!isLoggedIn && room.status === 'OPEN' && (
               <div><button onClick={() => navigate('/login')} style={{ color: '#9898b2', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'Noto Sans KR', sans-serif", textDecoration: 'underline' }}>회원 로그인/가입</button></div>
             )}
@@ -289,9 +254,8 @@ export default function Room() {
 
         {room.isRankingPublic && rankings.length > 0 && (
           <div>
-
-<h2 style={{ fontSize: 18, fontWeight: 800, color: '#0d0d17', marginBottom: 16 }}>랭킹보기</h2>
-<RankingList rankings={rankings} myRank={myEntry?.rank ?? undefined} />
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0d0d17', marginBottom: 16 }}>랭킹보기</h2>
+            <RankingList rankings={rankings} myRank={myEntry?.rank ?? undefined} />
           </div>
         )}
       </div>
@@ -302,12 +266,9 @@ export default function Room() {
             <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#f55a2b', letterSpacing: 2, marginBottom: 10 }}>GUEST</div>
             <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, letterSpacing: -.5 }}>닉네임 입력</h3>
             <p style={{ fontSize: 13, color: '#9898b2', marginBottom: 20, lineHeight: 1.6 }}>응모에 사용할 닉네임을 입력해주세요.</p>
-            <input
-              value={nickname}
-              onChange={e => setNickname(e.target.value)}
+            <input value={nickname} onChange={e => setNickname(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && nickname.trim()) doApply() }}
-              placeholder="닉네임"
-              autoFocus
+              placeholder="닉네임" autoFocus
               style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 15, fontFamily: "'Noto Sans KR', sans-serif", outline: 'none', marginBottom: 16, boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = '#f55a2b'}
               onBlur={e => e.target.style.borderColor = '#eaeaee'}

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMyRooms } from '../../api'
+import client from '../../api/client'
 
 interface RoomItem {
-  roomId: number
-  roomCode: string
+  roomId: string
   eventName: string
-  openAt: string | null
   roomStatus: string
-  participantCount: number
+  openAt: string | null
+  participantLimit: number | null
+  appliedCount: number
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -19,11 +19,36 @@ function StatusBadge({ status }: { status: string }) {
   }
   const s = map[status] ?? { label: status, bg: '#f3f4f6', color: '#6b7280' }
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '3px 8px',
-      borderRadius: 4, background: s.bg, color: s.color,
-      fontFamily: "'DM Mono', monospace",
-    }}>{s.label}</span>
+    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 4, background: s.bg, color: s.color, fontFamily: "'DM Mono', monospace" }}>
+      {s.label}
+    </span>
+  )
+}
+
+function LogoMark() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ width: 26, height: 26, border: '3.5px solid #0d0d17', borderRadius: '50%', position: 'relative' }}>
+        <div style={{ position: 'absolute', width: 3, height: 9, background: '#f55a2b', borderRadius: 2, bottom: '50%', left: '50%', transformOrigin: 'bottom center', transform: 'translateX(-50%) rotate(-28deg)' }} />
+        <div style={{ position: 'absolute', width: 3.5, height: 7, background: '#0d0d17', borderRadius: 2, top: -8, left: '50%', transform: 'translateX(-50%)' }} />
+        <div style={{ position: 'absolute', width: 11, height: 4, background: '#f55a2b', borderRadius: 2, top: -12, left: '50%', transform: 'translateX(-50%)' }} />
+      </div>
+      <div style={{ position: 'relative', width: 21, height: 26, flexShrink: 0 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3.5, background: '#0d0d17', borderRadius: 2 }} />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3.5, background: '#0d0d17', borderRadius: 2 }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: 3.5, bottom: 0, background: '#0d0d17', borderRadius: 2 }} />
+      </div>
+      <div style={{ position: 'relative', width: 21, height: 26, flexShrink: 0 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3.5, background: '#f55a2b', borderRadius: 2 }} />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3.5, background: '#f55a2b', borderRadius: 2 }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: 3.5, bottom: 0, background: '#f55a2b', borderRadius: 2 }} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3.5, paddingLeft: 2 }}>
+        <div style={{ width: 12, height: 3.5, borderRadius: 2, background: '#f55a2b' }} />
+        <div style={{ width: 7, height: 3.5, borderRadius: 2, background: '#f55a2b', opacity: 0.5 }} />
+        <div style={{ width: 4, height: 3.5, borderRadius: 2, background: '#f55a2b', opacity: 0.22 }} />
+      </div>
+    </div>
   )
 }
 
@@ -38,116 +63,54 @@ export default function My() {
       navigate('/login', { replace: true })
       return
     }
-    getMyRooms()
-      .then(res => {
-        const data = res.data as { data: { content?: RoomItem[] } | RoomItem[] }
-        const list = Array.isArray(data.data)
-          ? data.data
-          : (data.data as { content?: RoomItem[] }).content ?? []
-        setRooms(list)
-      })
+    client.get('/host/rooms')
+      .then(res => setRooms(res.data?.data?.rooms ?? []))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
   }, [navigate])
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken')
+    localStorage.removeItem('myRoomIds')
     navigate('/', { replace: true })
   }
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '즉시 시작'
-    const d = new Date(dateStr)
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    return new Date(dateStr).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
   }
 
   return (
-    <div style={{
-      minHeight: '100vh', background: '#f7f7f9',
-      fontFamily: "'Noto Sans KR', sans-serif",
-    }}>
-      {/* NAV */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '18px 52px',
-        background: 'rgba(255,255,255,.85)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid #eaeaee',
-      }}>
-        <div style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
-          <LogoMark />
-        </div>
+    <div style={{ minHeight: '100vh', background: '#f7f7f9', fontFamily: "'Noto Sans KR', sans-serif" }}>
+      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 52px', background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #eaeaee' }}>
+        <div style={{ cursor: 'pointer' }} onClick={() => navigate('/')}><LogoMark /></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 13.5, fontWeight: 500, color: '#9898b2',
-              fontFamily: "'Noto Sans KR', sans-serif",
-              transition: 'color .15s',
-            }}
+          <button onClick={handleLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 500, color: '#9898b2', fontFamily: "'Noto Sans KR', sans-serif" }}
             onMouseEnter={e => e.currentTarget.style.color = '#0d0d17'}
             onMouseLeave={e => e.currentTarget.style.color = '#9898b2'}
-          >
-            로그아웃
-          </button>
-          <button
-            onClick={() => navigate('/create')}
-            style={{
-              background: '#f55a2b', color: '#fff', border: 'none', cursor: 'pointer',
-              padding: '9px 18px', borderRadius: 8,
-              fontSize: 13.5, fontWeight: 700,
-              fontFamily: "'Noto Sans KR', sans-serif",
-              transition: 'background .15s',
-            }}
+          >로그아웃</button>
+          <button onClick={() => navigate('/create')} style={{ background: '#f55a2b', color: '#fff', border: 'none', cursor: 'pointer', padding: '9px 18px', borderRadius: 8, fontSize: 13.5, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif" }}
             onMouseEnter={e => e.currentTarget.style.background = '#e04d22'}
             onMouseLeave={e => e.currentTarget.style.background = '#f55a2b'}
-          >
-            + 방 만들기
-          </button>
+          >+ 방 만들기</button>
         </div>
       </nav>
 
-      {/* 본문 */}
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '100px 24px 60px' }}>
-
         <div style={{ marginBottom: 40 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: -1, color: '#0d0d17', marginBottom: 6 }}>
-            내 임시방
-          </h1>
+          <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: -1, color: '#0d0d17', marginBottom: 6 }}>내 임시방</h1>
           <p style={{ fontSize: 14, color: '#9898b2' }}>내가 만든 선착순 임시방 목록이에요.</p>
         </div>
 
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#9898b2', fontSize: 14 }}>
-            불러오는 중...
-          </div>
-        )}
-
-        {error && (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#9898b2', fontSize: 14 }}>
-            목록을 불러오지 못했어요.
-          </div>
-        )}
+        {loading && <div style={{ textAlign: 'center', padding: '60px 0', color: '#9898b2', fontSize: 14 }}>불러오는 중...</div>}
+        {error && <div style={{ textAlign: 'center', padding: '60px 0', color: '#9898b2', fontSize: 14 }}>목록을 불러오지 못했어요.</div>}
 
         {!loading && !error && rooms.length === 0 && (
-          <div style={{
-            textAlign: 'center', padding: '60px 24px',
-            background: '#fff', border: '1.5px solid #eaeaee',
-            borderRadius: 16,
-          }}>
+          <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 16 }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🏠</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#0d0d17', marginBottom: 8 }}>아직 만든 임시방이 없어요</div>
             <div style={{ fontSize: 14, color: '#9898b2', marginBottom: 24 }}>선착순 이벤트를 시작해보세요.</div>
-            <button
-              onClick={() => navigate('/create')}
-              style={{
-                background: '#f55a2b', color: '#fff', border: 'none', cursor: 'pointer',
-                padding: '12px 24px', borderRadius: 9,
-                fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif",
-              }}
-            >
+            <button onClick={() => navigate('/create')} style={{ background: '#f55a2b', color: '#fff', border: 'none', cursor: 'pointer', padding: '12px 24px', borderRadius: 9, fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif" }}>
               첫 임시방 만들기 →
             </button>
           </div>
@@ -156,73 +119,30 @@ export default function My() {
         {!loading && !error && rooms.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {rooms.map(room => (
-              <div
-                key={room.roomId}
-                onClick={() => navigate(`/r/${room.roomCode}`)}
-                style={{
-                  background: '#fff', border: '1.5px solid #eaeaee',
-                  borderRadius: 12, padding: '20px 24px',
-                  display: 'flex', alignItems: 'center', gap: 16,
-                  cursor: 'pointer', transition: 'border-color .15s, box-shadow .15s',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.borderColor = '#d2d2dc'
-                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.06)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.borderColor = '#eaeaee'
-                  e.currentTarget.style.boxShadow = 'none'
-                }}
+              <div key={room.roomId}
+                onClick={() => navigate(`/r/${room.roomId}`)}
+                style={{ background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 12, padding: '24px 28px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'border-color .15s, box-shadow .15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#d2d2dc'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.06)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#eaeaee'; e.currentTarget.style.boxShadow = 'none' }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#0d0d17' }}>{room.eventName}</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: '#0d0d17' }}>{room.eventName}</span>
                     <StatusBadge status={room.roomStatus} />
                   </div>
-                  <div style={{ fontSize: 12, color: '#9898b2', fontFamily: "'DM Mono', monospace" }}>
-                    선착순 시작: {formatDate(room.openAt)} · {room.roomCode}
+                  <div style={{ fontSize: 13, color: '#9898b2', fontFamily: "'DM Mono', monospace" }}>
+                    선착순 시작: {formatDate(room.openAt)}
+                    {room.participantLimit && room.participantLimit < 2000000000 ? ` · 최대 ${room.participantLimit}명` : ''}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: '#f55a2b', letterSpacing: -1 }}>
-                    {room.participantCount ?? 0}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#9898b2' }}>참여자</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: '#f55a2b', letterSpacing: -1 }}>{room.appliedCount ?? 0}</div>
+                  <div style={{ fontSize: 12, color: '#9898b2' }}>참여자</div>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-function LogoMark() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-      <div style={{ width: 26, height: 26, border: '3.5px solid #0d0d17', borderRadius: '50%', position: 'relative' }}>
-        <div style={{ position: 'absolute', width: 3, height: 9, background: '#f55a2b', borderRadius: 2, bottom: '50%', left: '50%', transformOrigin: 'bottom center', transform: 'translateX(-50%) rotate(-28deg)' }} />
-        <div style={{ position: 'absolute', width: 3.5, height: 7, background: '#0d0d17', borderRadius: 2, top: -8, left: '50%', transform: 'translateX(-50%)' }} />
-        <div style={{ position: 'absolute', width: 11, height: 4, background: '#f55a2b', borderRadius: 2, top: -12, left: '50%', transform: 'translateX(-50%)' }} />
-      </div>
-      {/* ㄷ */}
-      <div style={{ position: 'relative', width: 21, height: 26, flexShrink: 0 }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3.5, background: '#0d0d17', borderRadius: 2 }} />
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3.5, background: '#0d0d17', borderRadius: 2 }} />
-        <div style={{ position: 'absolute', top: 0, left: 0, width: 3.5, bottom: 0, background: '#0d0d17', borderRadius: 2 }} />
-      </div>
-      {/* ㄷ orange */}
-      <div style={{ position: 'relative', width: 21, height: 26, flexShrink: 0 }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3.5, background: '#f55a2b', borderRadius: 2 }} />
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3.5, background: '#f55a2b', borderRadius: 2 }} />
-        <div style={{ position: 'absolute', top: 0, left: 0, width: 3.5, bottom: 0, background: '#f55a2b', borderRadius: 2 }} />
-      </div>
-      {/* speed lines */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3.5, paddingLeft: 2 }}>
-        <div style={{ width: 12, height: 3.5, borderRadius: 2, background: '#f55a2b' }} />
-        <div style={{ width: 7, height: 3.5, borderRadius: 2, background: '#f55a2b', opacity: 0.5 }} />
-        <div style={{ width: 4, height: 3.5, borderRadius: 2, background: '#f55a2b', opacity: 0.22 }} />
       </div>
     </div>
   )
