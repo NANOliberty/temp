@@ -25,4 +25,4 @@ export const MOCK_MY_ENTRY: Entry = {
 }
 
 // API 완성되면 이 값을 false로 바꾸면 됨
-export const USE_MOCK = true
+export const USE_MOCK = false

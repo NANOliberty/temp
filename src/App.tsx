@@ -6,6 +6,8 @@ import My from './pages/My'
 import Login from './pages/Login'
 import AuthCallback from './pages/Auth/Callback'
 import CreateDone from './pages/Create/Done'
+import RoomSettings from './pages/RoomSettings'
+import { NotFoundPage } from './pages/NotFound'
 
 export default function App() {
   return (
@@ -18,6 +20,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/create/done" element={<CreateDone />} />
+        <Route path="/host/:roomId/settings" element={<RoomSettings />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )
