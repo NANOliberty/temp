@@ -109,8 +109,8 @@ src/
 | Member Room | `GET /host/rooms` | O |
 | Member Room | `GET /host/rooms/{roomId}` | O |
 | Member Room | `GET /host/rooms/{roomId}/participants` | 미구현 |
-| Member Room | `PATCH /host/rooms/{roomId}` | 문제발생 |
-| Member Room | `DELETE /host/rooms/{roomId}` | 문제발생 |
+| Member Room | `PATCH /host/rooms/{roomId}` | O |
+| Member Room | `DELETE /host/rooms/{roomId}` | O |
 | Room Profile | `PATCH /rooms/{roomCode}/me` | X |
 | Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/authorize` | X |
 | Room Account Link | `GET /rooms/{roomCode}/me/oauth/{provider}/link/callback` | X |
