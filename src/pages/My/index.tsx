@@ -64,7 +64,9 @@ export default function My() {
       return
     }
     client.get('/host/rooms')
-      .then(res => setRooms(res.data?.data?.rooms ?? []))
+      .then(res => setRooms(
+  (res.data?.data?.rooms ?? []).filter((r: RoomItem) => r.roomStatus !== 'DELETED')
+))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
   }, [navigate])

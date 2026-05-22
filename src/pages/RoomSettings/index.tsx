@@ -98,6 +98,7 @@ export default function RoomSettings() {
       .finally(() => setLoading(false))
   }, [roomId])
 
+  const hostToken = localStorage.getItem(`hostToken_${roomId}`)
   const handleSave = async () => {
     if (!roomId) return
     setSaving(true)
@@ -110,7 +111,9 @@ export default function RoomSettings() {
       if (form.openAt) body.openAt = new Date(form.openAt).toISOString()
       if (form.participantLimit) body.participantLimit = Number(form.participantLimit)
 
-      await client.patch(`/host/rooms/${roomId}`, body)
+await client.patch(`/host/rooms/${roomId}`, body, {
+  headers: { Authorization: `Bearer ${hostToken}` }
+})
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch {
@@ -124,7 +127,10 @@ export default function RoomSettings() {
     if (!roomId || deleteInput !== form.eventName) return
     setDeleting(true)
     try {
-      await client.delete(`/host/rooms/${roomId}`)
+await client.delete(`/host/rooms/${roomId}`, {
+  headers: { Authorization: `Bearer ${hostToken}` }
+})
+
       // localStorage에서 roomId 제거
       const ids = JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]
       localStorage.setItem('myRoomIds', JSON.stringify(ids.filter(id => id !== roomId)))
