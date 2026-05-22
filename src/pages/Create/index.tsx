@@ -19,6 +19,13 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   )
 }
 
+function saveRoomId(roomId: string) {
+  const existing = JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]
+  if (!existing.includes(roomId)) {
+    localStorage.setItem('myRoomIds', JSON.stringify([roomId, ...existing]))
+  }
+}
+
 export default function Create() {
   const navigate = useNavigate()
   const [form, setForm] = useState({
@@ -66,6 +73,8 @@ export default function Create() {
         localStorage.setItem(`hostToken_${eventId}`, hostToken)
       }
 
+      saveRoomId(eventId)
+      
       navigate('/create/done', { state: { roomCode: eventId, eventName: form.eventName.trim() } })
     } catch (e: unknown) {
       const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code

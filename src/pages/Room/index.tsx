@@ -62,7 +62,10 @@ export default function Room() {
   const { roomCode } = useParams<{ roomCode: string }>()
   const navigate = useNavigate()
   const isLoggedIn = !!localStorage.getItem('accessToken')
-  const isHost = (JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]).includes(roomCode ?? '')
+
+  // host 판단: API 기반 (비로그인이면 체크 불필요하므로 초기값 true)
+  const [isHost, setIsHost] = useState(false)
+  const [hostChecked, setHostChecked] = useState(!isLoggedIn || USE_MOCK)
 
   const [room, setRoom] = useState<Room | null>(USE_MOCK ? MOCK_ROOM : null)
   const [rankings, setRankings] = useState<RankingItem[]>(USE_MOCK ? MOCK_RANKINGS : [])
@@ -73,11 +76,24 @@ export default function Room() {
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // Step 1: 로그인 상태면 GET /host/rooms 로 host 여부 확인
   useEffect(() => {
-    if (!roomCode || USE_MOCK) return
+    if (!isLoggedIn || !roomCode || USE_MOCK) return
+    client.get('/host/rooms')
+      .then(res => {
+        const rooms = res.data?.data?.rooms ?? []
+        const found = rooms.some((r: { roomId: string }) => r.roomId === roomCode)
+        setIsHost(found)
+      })
+      .catch(() => {})
+      .finally(() => setHostChecked(true))
+  }, [roomCode, isLoggedIn])
+
+  // Step 2: host 여부 확인 후 방 데이터 로드
+  useEffect(() => {
+    if (!roomCode || USE_MOCK || !hostChecked) return
 
     if (isHost) {
-      // host는 /host/rooms/{roomId} 로 조회
       client.get(`/host/rooms/${roomCode}`)
         .then(res => {
           const d = res.data.data
@@ -93,7 +109,6 @@ export default function Room() {
         .catch(() => setError('방을 찾을 수 없습니다.'))
         .finally(() => setLoading(false))
     } else {
-      // 참여자는 공개 API (미구현 시 에러)
       Promise.all([
         client.get(`/rooms/${roomCode}`),
         client.get(`/rooms/${roomCode}/rankings`),
@@ -107,7 +122,7 @@ export default function Room() {
         .catch(() => setError('방을 찾을 수 없습니다.'))
         .finally(() => setLoading(false))
     }
-  }, [roomCode, isLoggedIn, isHost])
+  }, [roomCode, isLoggedIn, isHost, hostChecked])
 
   const handleApply = async () => {
     if (!isLoggedIn) { setShowNicknameModal(true); return }
@@ -148,7 +163,7 @@ export default function Room() {
     return new Date(d).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
   }
 
-  if (loading) return (
+  if (loading || !hostChecked) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Noto Sans KR', sans-serif", color: '#9898b2', fontSize: 14 }}>
       불러오는 중...
     </div>

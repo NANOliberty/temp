@@ -8,7 +8,8 @@ const client = axios.create({
 // 요청마다 JWT 자동으로 붙이기
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken')
-  if (token) {
+  // 이미 Authorization 헤더가 있으면 덮어쓰지 않음
+  if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
