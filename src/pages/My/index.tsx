@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import client from '../../api/client'
-
-interface RoomItem {
-  roomId: string
-  eventName: string
-  roomStatus: string
-  openAt: string | null
-  participantLimit: number | null
-  appliedCount: number
-}
+import { getMyRooms } from '../../api'
+import type { HostRoomListItem } from '../../types'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; bg: string; color: string }> = {
@@ -54,7 +46,7 @@ function LogoMark() {
 
 export default function My() {
   const navigate = useNavigate()
-  const [rooms, setRooms] = useState<RoomItem[]>([])
+  const [rooms, setRooms] = useState<HostRoomListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -63,10 +55,8 @@ export default function My() {
       navigate('/login', { replace: true })
       return
     }
-    client.get('/host/rooms')
-      .then(res => setRooms(
-  (res.data?.data?.rooms ?? []).filter((r: RoomItem) => r.roomStatus !== 'DELETED')
-))
+    getMyRooms()
+      .then(data => setRooms((data.rooms ?? []).filter(r => r.roomStatus !== 'DELETED')))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
   }, [navigate])

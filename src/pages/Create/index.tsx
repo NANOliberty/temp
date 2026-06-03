@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import client from '../../api/client'
+import { createRoom, guestSignup } from '../../api'
+import type { CreateRoomRequest } from '../../types'
 
 const inputStyle = {
   width: '100%', padding: '11px 14px',
@@ -49,7 +50,7 @@ export default function Create() {
 
     try {
       // 1. 방 생성
-      const body: Record<string, unknown> = {
+      const body: CreateRoomRequest = {
         eventName: form.eventName.trim(),
         rankingExposed: form.rankingExposed,
         isPublic: form.isPublic,
@@ -57,20 +58,18 @@ export default function Create() {
       if (form.openAt) body.openAt = new Date(form.openAt).toISOString()
       if (form.participantLimit) body.participantLimit = Number(form.participantLimit)
 
-      const roomRes = await client.post('/host/rooms', body)
-      const { eventId } = roomRes.data.data
+      const { eventId } = await createRoom(body)
 
       // 2. 호스트 guest 등록
-      const signupRes = await client.post(`/rooms/${eventId}/auth/signup`, {
+      const auth = await guestSignup(eventId, {
         roomNickname: form.hostNickname.trim(),
         roomPassword: form.hostPassword.trim(),
         isHost: true,
       })
 
       // host accessToken 저장 (방별로 저장)
-      const hostToken = signupRes.data?.data?.accessToken
-      if (hostToken) {
-        localStorage.setItem(`hostToken_${eventId}`, hostToken)
+      if (auth.accessToken) {
+        localStorage.setItem(`hostToken_${eventId}`, auth.accessToken)
       }
 
       saveRoomId(eventId)
