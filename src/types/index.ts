@@ -32,6 +32,11 @@ export type TicketStatus =
 
 export type MemberType = 'SERVICE_MEMBER' | 'GUEST'
 
+// 응모 처리 모드 (POST /entries 응답 entryMode)
+//  DIRECT_CONFIRMED: 정원 내 + 인증 → Entry 즉시 확정
+//  그 외(비로그인 임시점유/대기열): 티켓 발급
+export type EntryMode = 'DIRECT_CONFIRMED' | (string & {})
+
 export type OAuthProvider = 'google' | 'kakao'
 
 // 인원 무제한일 때 백엔드가 내려주는 sentinel 값 (Integer.MAX_VALUE)
@@ -57,20 +62,22 @@ export interface RoomInfo {
   }
 }
 
-// GET /host/rooms 목록 아이템 (응답 schema 확정 필요)
+// GET /host/rooms 목록 아이템
 export interface HostRoomListItem {
   roomId: string
-  roomCode?: string
   eventName: string
   roomStatus: RoomStatus
   openAt: string | null
   participantLimit: number | null
-  participantCount?: number
-  appliedCount?: number
+  appliedCount: number
 }
 
+// GET /host/rooms 응답 data (페이지네이션)
 export interface HostRoomList {
   rooms: HostRoomListItem[]
+  page: number
+  size: number
+  totalElements: number
 }
 
 // POST /host/rooms 생성 요청
@@ -103,19 +110,22 @@ export interface UpdateRoomRequest {
 // 응모 / 티켓
 // ─────────────────────────────────────────────
 // POST /rooms/{roomCode}/entries 응답
-//  - 인증(회원/guest) 응모 → Entry 즉시 생성 (entryId/rank/entryStatus)
-//  - 비로그인 응모 → EntryTicket 발급 (ticketToken/ticketStatus/expiresAt)
+//  - entryMode=DIRECT_CONFIRMED → Entry 즉시 생성 (entryId/rank/entryStatus)
+//  - 그 외(비로그인 임시점유/대기열) → 티켓 발급 (ticketToken/ticketStatus)
+//  reservedRank: 전체 응모 순서(재사용 안 함), waitingNumber: 현재 유효 대기열 예비번호
 export interface EntryOrTicketResult {
-  // 인증 응모
-  entryId?: string | number
+  entryMode: EntryMode
+  // 인증 응모 (DIRECT_CONFIRMED)
+  entryId?: number | null
+  entryStatus?: EntryStatus | null
   rank?: number | null
-  entryStatus?: EntryStatus
-  // 비로그인 응모 (대기열/티켓)
-  ticketToken?: string
-  ticketStatus?: TicketStatus
-  expiresAt?: string | null
+  appliedAt?: string | null
+  // 비로그인 임시점유 / 대기열 티켓
+  ticketToken?: string | null
+  ticketStatus?: TicketStatus | null
   reservedRank?: number | null
-  waitingOrder?: number | null
+  waitingNumber?: number | null
+  expiresAt?: string | null
 }
 
 // GET /rooms/{roomCode}/entries/me 응답 (내 응모 상태)
@@ -158,16 +168,21 @@ export interface RoomMemberProfile {
 }
 
 // 방 전용 회원가입/로그인 요청
+//  ticketToken: 비로그인 선응모로 받은 티켓을 가입/로그인과 연결할 때 전달
 export interface GuestAuthRequest {
   roomNickname: string
   roomPassword: string
+  ticketToken?: string
   isHost?: boolean
 }
 
 // POST /rooms/{roomCode}/auth/signup | login 응답
 export interface GuestAuthResult {
-  roomMemberId: string | number
+  roomMemberId: number
+  principalType: string
+  roomCode: string
   accessToken: string
+  accessTokenExpiresAt: string
 }
 
 // ─────────────────────────────────────────────
