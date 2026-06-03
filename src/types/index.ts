@@ -129,29 +129,47 @@ export interface EntryOrTicketResult {
 }
 
 // GET /rooms/{roomCode}/entries/me 응답 (내 응모 상태)
+// 조회 시 lazy promotion 실행. WAITING이면 ticket 관련 필드가 함께 옴.
 export interface MyEntry {
-  entryId?: string | number
-  rank: number | null
-  entryStatus: EntryStatus | TicketStatus
-  appliedAt?: string | null
-  confirmedAt?: string | null
+  hasApplied: boolean
+  entryId?: number | null
+  roomMemberId?: number | null
+  memberType?: MemberType
+  entryStatus?: EntryStatus | TicketStatus | null
+  myRank?: number | null
+  badgeLabel?: string | null
+  openAt?: string | null
+  currentProfile?: Record<string, unknown> | null
+  missingRequiredFields?: string[]
+  profileCompleted?: boolean
+  socialLinked?: boolean
+  // 대기열(WAITING) 상태일 때
+  ticketToken?: string | null
+  ticketStatus?: TicketStatus | null
+  reservedRank?: number | null
+  waitingNumber?: number | null
+  ticketExpiresAt?: string | null
 }
 
 // GET /entry-tickets/{ticketToken} 응답 (티켓 상태 조회)
 export interface EntryTicket {
   ticketToken: string
   ticketStatus: TicketStatus
-  expiresAt?: string | null
+  roomCode?: string
   reservedRank?: number | null
-  waitingOrder?: number | null
+  waitingNumber?: number | null
+  expiresAt?: string | null
 }
 
 // POST /entry-tickets/{ticketToken}/claim 응답
+//  PENDING_AUTH → CONFIRMED 확정, WAITING → 귀속 후 WAITING 유지
 export interface ClaimResult {
-  entryId: string | number
-  rank: number | null
-  entryStatus: EntryStatus
-  ticketStatus: TicketStatus
+  entryStatus: EntryStatus | TicketStatus
+  entryId?: number | null
+  rank?: number | null
+  appliedAt?: string | null
+  ticketStatus?: TicketStatus | null
+  waitingNumber?: number | null
 }
 
 // ─────────────────────────────────────────────
@@ -159,12 +177,13 @@ export interface ClaimResult {
 // ─────────────────────────────────────────────
 // PATCH /rooms/{roomCode}/me 응답 (방 멤버 프로필 생성 또는 조회)
 export interface RoomMemberProfile {
-  roomMemberId: string | number
+  roomCode: string
+  roomMemberId: number
   memberType: MemberType
+  socialLinked?: boolean
   currentProfile: Record<string, unknown> | null
   missingRequiredFields?: string[]
   profileCompleted: boolean
-  socialLinked?: boolean
 }
 
 // 방 전용 회원가입/로그인 요청
