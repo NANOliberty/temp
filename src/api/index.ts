@@ -4,6 +4,7 @@ import type {
   RoomInfo,
   HostRoomList,
   CreateRoomRequest,
+  CreateRoomResult,
   UpdateRoomRequest,
   EntryOrTicketResult,
   MyEntry,
@@ -38,7 +39,7 @@ export const getMyRooms = () =>
   unwrap(client.get<ApiResponse<HostRoomList>>('/host/rooms'))
 
 export const createRoom = (data: CreateRoomRequest) =>
-  unwrap(client.post<ApiResponse<RoomInfo>>('/host/rooms', data))
+  unwrap(client.post<ApiResponse<CreateRoomResult>>('/host/rooms', data))
 
 export const getHostRoom = (roomId: string) =>
   unwrap(client.get<ApiResponse<RoomInfo>>(`/host/rooms/${roomId}`))

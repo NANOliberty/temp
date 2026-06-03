@@ -7,6 +7,10 @@ export interface ApiResponse<T> {
   success: boolean
   status: number
   data: T
+  error?: {
+    code: string
+    message: string
+  } | null
   timestamp: string
 }
 
@@ -76,6 +80,14 @@ export interface CreateRoomRequest {
   participantLimit?: number
   rankingExposed: boolean
   isPublic: boolean
+}
+
+// POST /host/rooms 생성 응답 data
+// eventId = roomId = roomCode (동일 식별자)
+export interface CreateRoomResult {
+  eventId: string
+  roomStatus: RoomStatus
+  createdAt: string
 }
 
 // PATCH /host/rooms/{roomId} 수정 요청
