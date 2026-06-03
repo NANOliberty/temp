@@ -147,11 +147,13 @@ export default function Room() {
         return
       }
       const res = await postEntry(roomCode)
-      if (res.data.ticketToken) {
-        localStorage.setItem('ticketToken', res.data.ticketToken)
-        setMyEntry({ rank: null, confirmedAt: null, status: 'PENDING', ticketToken: res.data.ticketToken })
+      if (res.ticketToken) {
+        // 비로그인 응모 → 티켓 발급 (이후 로그인/가입 후 claim 필요)
+        localStorage.setItem('ticketToken', res.ticketToken)
+        setMyEntry({ rank: null, confirmedAt: null, status: 'PENDING', ticketToken: res.ticketToken })
       } else {
-        setMyEntry(res.data)
+        // 인증 응모 → Entry 즉시 확정
+        setMyEntry({ rank: res.rank ?? null, confirmedAt: null, status: 'CONFIRMED' })
       }
       setShowNicknameModal(false)
     } catch (e: unknown) {
