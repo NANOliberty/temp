@@ -68,7 +68,7 @@ export default function Room() {
   const [hostChecked, setHostChecked] = useState(!isLoggedIn || USE_MOCK)
 
   const [room, setRoom] = useState<Room | null>(USE_MOCK ? MOCK_ROOM : null)
-  const [rankings, setRankings] = useState<RankingItem[]>(USE_MOCK ? MOCK_RANKINGS : [])
+  const [rankings] = useState<RankingItem[]>(USE_MOCK ? MOCK_RANKINGS : [])
   const [myEntry, setMyEntry] = useState<Entry | null>(USE_MOCK && isLoggedIn ? MOCK_MY_ENTRY : null)
   const [loading, setLoading] = useState(!USE_MOCK)
   const [applying, setApplying] = useState(false)
@@ -108,20 +108,27 @@ export default function Room() {
         })
         .catch(() => setError('방을 찾을 수 없습니다.'))
         .finally(() => setLoading(false))
-    } else {
-      Promise.all([
-        client.get(`/rooms/${roomCode}`),
-        client.get(`/rooms/${roomCode}/rankings`),
-        isLoggedIn ? client.get(`/rooms/${roomCode}/entries/me`) : Promise.resolve(null),
-      ])
-        .then(([roomRes, rankRes, entryRes]) => {
-          setRoom(roomRes.data.data)
-          setRankings(rankRes.data.data?.content ?? [])
-          if (entryRes) setMyEntry(entryRes.data.data)
-        })
-        .catch(() => setError('방을 찾을 수 없습니다.'))
-        .finally(() => setLoading(false))
-    }
+} else {
+  // 참여자도 /host/rooms/{roomCode} 로 공개 정보 조회
+  Promise.all([
+    client.get(`/host/rooms/${roomCode}`),
+    isLoggedIn ? client.get(`/rooms/${roomCode}/entries/me`) : Promise.resolve(null),
+  ])
+    .then(([roomRes, entryRes]) => {
+      const d = roomRes.data.data
+      setRoom({
+        title: d.eventName,
+        status: d.roomStatus,
+        openAt: d.openAt,
+        isRankingPublic: d.rankingExposed,
+        entryCount: d.participantCount ?? d.summary?.participantCount ?? 0,
+        maxEntries: d.participantLimit && d.participantLimit < 2000000000 ? d.participantLimit : null,
+      } as Room)
+      if (entryRes) setMyEntry(entryRes.data.data)
+    })
+    .catch(() => setError('방을 찾을 수 없습니다.'))
+    .finally(() => setLoading(false))
+}
   }, [roomCode, isLoggedIn, isHost, hostChecked])
 
   const handleApply = async () => {
