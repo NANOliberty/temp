@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { postEntry } from '../../api'
+import { postEntry, getRoom, getMyEntry, getMyRooms } from '../../api'
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry } from '../../types'
-import client from '../../api/client'
+import { UNLIMITED_PARTICIPANTS } from '../../types'
 
 function LogoMark() {
   return (
@@ -79,10 +79,9 @@ export default function Room() {
   // Step 1: 로그인 상태면 GET /host/rooms 로 host 여부 확인
   useEffect(() => {
     if (!isLoggedIn || !roomCode || USE_MOCK) return
-    client.get('/host/rooms')
-      .then(res => {
-        const rooms = res.data?.data?.rooms ?? []
-        const found = rooms.some((r: { roomId: string }) => r.roomId === roomCode)
+    getMyRooms()
+      .then(data => {
+        const found = (data.rooms ?? []).some(r => r.roomId === roomCode)
         setIsHost(found)
       })
       .catch(() => {})
@@ -90,45 +89,36 @@ export default function Room() {
   }, [roomCode, isLoggedIn])
 
   // Step 2: host 여부 확인 후 방 데이터 로드
+  // 공개 룸 정보는 host/참여자 모두 getRoom(공개 엔드포인트)으로 조회.
+  // 참여자(비host) + 로그인 상태면 내 응모 상태도 함께 조회.
   useEffect(() => {
     if (!roomCode || USE_MOCK || !hostChecked) return
 
-    if (isHost) {
-      client.get(`/host/rooms/${roomCode}`)
-        .then(res => {
-          const d = res.data.data
-          setRoom({
-            title: d.eventName,
-            status: d.roomStatus,
-            openAt: d.openAt,
-            isRankingPublic: d.rankingExposed,
-            entryCount: d.participantCount ?? d.summary?.participantCount ?? 0,
-            maxEntries: d.participantLimit && d.participantLimit < 2000000000 ? d.participantLimit : null,
-          } as Room)
+    Promise.all([
+      getRoom(roomCode),
+      !isHost && isLoggedIn ? getMyEntry(roomCode) : Promise.resolve(null),
+    ])
+      .then(([d, entry]) => {
+        setRoom({
+          roomCode,
+          title: d.eventName,
+          status: d.roomStatus,
+          openAt: d.openAt,
+          isRankingPublic: d.rankingExposed,
+          entryCount: d.participantCount ?? d.summary?.participantCount ?? 0,
+          maxEntries: d.participantLimit && d.participantLimit < UNLIMITED_PARTICIPANTS ? d.participantLimit : null,
         })
-        .catch(() => setError('방을 찾을 수 없습니다.'))
-        .finally(() => setLoading(false))
-} else {
-  // 참여자도 /host/rooms/{roomCode} 로 공개 정보 조회
-  Promise.all([
-    client.get(`/host/rooms/${roomCode}`),
-    isLoggedIn ? client.get(`/rooms/${roomCode}/entries/me`) : Promise.resolve(null),
-  ])
-    .then(([roomRes, entryRes]) => {
-      const d = roomRes.data.data
-      setRoom({
-        title: d.eventName,
-        status: d.roomStatus,
-        openAt: d.openAt,
-        isRankingPublic: d.rankingExposed,
-        entryCount: d.participantCount ?? d.summary?.participantCount ?? 0,
-        maxEntries: d.participantLimit && d.participantLimit < 2000000000 ? d.participantLimit : null,
-      } as Room)
-      if (entryRes) setMyEntry(entryRes.data.data)
-    })
-    .catch(() => setError('방을 찾을 수 없습니다.'))
-    .finally(() => setLoading(false))
-}
+        if (entry && entry.hasApplied) {
+          setMyEntry({
+            rank: entry.myRank ?? null,
+            confirmedAt: null,
+            status: entry.entryStatus === 'CONFIRMED' ? 'CONFIRMED' : 'PENDING',
+            ticketToken: entry.ticketToken ?? undefined,
+          })
+        }
+      })
+      .catch(() => setError('방을 찾을 수 없습니다.'))
+      .finally(() => setLoading(false))
   }, [roomCode, isLoggedIn, isHost, hostChecked])
 
   const handleApply = async () => {

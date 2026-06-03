@@ -1,18 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import client from '../../api/client'
-
-interface RoomDetail {
-  roomId: string
-  roomCode: string
-  eventName: string
-  openAt: string | null
-  roomStatus: string
-  participantCount: number
-  participantLimit: number | null
-  rankingExposed: boolean
-  isPublic: boolean
-}
+import { getHostRoom, updateRoom, deleteRoom } from '../../api'
+import type { RoomInfo, UpdateRoomRequest } from '../../types'
 
 function LogoMark() {
   return (
@@ -62,7 +51,7 @@ export default function RoomSettings() {
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
 
-  const [room, setRoom] = useState<RoomDetail | null>(null)
+  const [room, setRoom] = useState<RoomInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -82,9 +71,8 @@ export default function RoomSettings() {
 
   useEffect(() => {
     if (!roomId) return
-    client.get(`/host/rooms/${roomId}`)
-      .then(res => {
-        const data = res.data.data as RoomDetail
+    getHostRoom(roomId)
+      .then(data => {
         setRoom(data)
         setForm({
           eventName: data.eventName,
@@ -103,7 +91,7 @@ export default function RoomSettings() {
     if (!roomId) return
     setSaving(true)
     try {
-      const body: Record<string, unknown> = {
+      const body: UpdateRoomRequest = {
         eventName: form.eventName.trim(),
         rankingExposed: form.rankingExposed,
         isPublic: form.isPublic,
@@ -111,9 +99,7 @@ export default function RoomSettings() {
       if (form.openAt) body.openAt = new Date(form.openAt).toISOString()
       if (form.participantLimit) body.participantLimit = Number(form.participantLimit)
 
-await client.patch(`/host/rooms/${roomId}`, body, {
-  headers: { Authorization: `Bearer ${hostToken}` }
-})
+      await updateRoom(roomId, body, hostToken ?? undefined)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch {
@@ -127,9 +113,7 @@ await client.patch(`/host/rooms/${roomId}`, body, {
     if (!roomId || deleteInput !== form.eventName) return
     setDeleting(true)
     try {
-await client.delete(`/host/rooms/${roomId}`, {
-  headers: { Authorization: `Bearer ${hostToken}` }
-})
+      await deleteRoom(roomId, hostToken ?? undefined)
 
       // localStorage에서 roomId 제거
       const ids = JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]
