@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { postEntry, getRoom, getMyEntry, getMyRooms } from '../../api'
+import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, claimTicket } from '../../api'
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
@@ -74,7 +74,10 @@ export default function Room() {
   const [applying, setApplying] = useState(false)
   const [showNicknameModal, setShowNicknameModal] = useState(false)
   const [nickname, setNickname] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // 게스트 가입 직후엔 로그인 상태이지만 isLoggedIn(초기 렌더값)은 갱신되지 않으므로 별도 추적
+  const [justAuthed, setJustAuthed] = useState(false)
 
   // Step 1: 로그인 상태면 GET /host/rooms 로 host 여부 확인
   useEffect(() => {
@@ -121,13 +124,67 @@ export default function Room() {
       .finally(() => setLoading(false))
   }, [roomCode, isLoggedIn, isHost, hostChecked])
 
-  const handleApply = async () => {
-    if (!isLoggedIn) { setShowNicknameModal(true); return }
-    doApply()
+  const reportError = (e: unknown, fallback: string) => {
+    const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
+    if (code === 'ENTRY_ALREADY_CONFIRMED') setError('이미 응모했습니다.')
+    else if (code === 'ROOM_FULL') setError('선착순이 마감됐습니다.')
+    else if (code === 'ROOM_CLOSED' || code === 'ROOM_NOT_OPEN') setError('지금은 응모할 수 없는 이벤트입니다.')
+    else if (code === 'ENTRY_TICKET_EXPIRED') setError('대기 시간이 만료됐어요. 다시 응모해주세요.')
+    else if (code === 'ROOM_MEMBER_NICKNAME_DUPLICATED') setError('이미 사용 중인 닉네임이에요.')
+    else if (code === 'ROOM_MEMBER_PASSWORD_MISMATCH') setError('비밀번호가 일치하지 않아요.')
+    else if (code === 'REQUIRED_PROFILE_MISSING') setError('응모에 필요한 정보가 부족해요.')
+    else setError(fallback)
   }
 
-  const doApply = async () => {
+  // 응모 확정: 비로그인 선응모로 받은 티켓이 있으면 claim, 없으면 신규 응모.
+  const confirmEntry = async () => {
     if (!roomCode) return
+    const ticketToken = localStorage.getItem('ticketToken')
+    if (ticketToken) {
+      const res = await claimTicket(ticketToken)
+      if (res.entryStatus === 'CONFIRMED') {
+        localStorage.removeItem('ticketToken')
+        setMyEntry({ rank: res.rank ?? null, confirmedAt: res.appliedAt ?? null, status: 'CONFIRMED' })
+      } else {
+        // WAITING 유지 (대기열)
+        setMyEntry({ rank: res.rank ?? null, confirmedAt: null, status: 'PENDING', ticketToken })
+      }
+      return
+    }
+    const res = await postEntry(roomCode)
+    if (res.entryMode === 'DIRECT_CONFIRMED') {
+      localStorage.removeItem('ticketToken')
+      setMyEntry({ rank: res.rank ?? null, confirmedAt: res.appliedAt ?? null, status: 'CONFIRMED' })
+    } else if (res.ticketToken) {
+      // 비로그인 임시점유/대기열 → 티켓 발급 (이후 인증 후 claim 필요)
+      localStorage.setItem('ticketToken', res.ticketToken)
+      setMyEntry({ rank: res.reservedRank ?? null, confirmedAt: null, status: 'PENDING', ticketToken: res.ticketToken })
+    }
+  }
+
+  // 응모 버튼: 인증된 사용자면 바로 확정, 아니면 게스트 가입 모달
+  const handleApply = async () => {
+    if (!isLoggedIn && !justAuthed) { setShowNicknameModal(true); return }
+    setError(null)
+    setApplying(true)
+    try {
+      if (USE_MOCK) {
+        await new Promise(r => setTimeout(r, 600))
+        setMyEntry({ rank: 13, confirmedAt: new Date().toISOString(), status: 'CONFIRMED' })
+        return
+      }
+      await confirmEntry()
+    } catch (e) {
+      reportError(e, '응모 중 오류가 발생했습니다.')
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  // 게스트 가입 후 응모 확정 (모달)
+  const submitGuest = async () => {
+    if (!roomCode || !nickname.trim() || !password.trim()) return
+    setError(null)
     setApplying(true)
     try {
       if (USE_MOCK) {
@@ -136,22 +193,18 @@ export default function Room() {
         setShowNicknameModal(false)
         return
       }
-      const res = await postEntry(roomCode)
-      if (res.entryMode === 'DIRECT_CONFIRMED') {
-        // 인증 응모 → Entry 즉시 확정
-        setMyEntry({ rank: res.rank ?? null, confirmedAt: res.appliedAt ?? null, status: 'CONFIRMED' })
-      } else if (res.ticketToken) {
-        // 비로그인 응모 → 티켓 발급 (이후 로그인/가입 후 claim 필요)
-        localStorage.setItem('ticketToken', res.ticketToken)
-        setMyEntry({ rank: res.reservedRank ?? null, confirmedAt: null, status: 'PENDING', ticketToken: res.ticketToken })
-      }
+      const ticketToken = localStorage.getItem('ticketToken') || undefined
+      const auth = await guestSignup(roomCode, {
+        roomNickname: nickname.trim(),
+        roomPassword: password.trim(),
+        ticketToken,
+      })
+      localStorage.setItem('accessToken', auth.accessToken)
+      setJustAuthed(true)
+      await confirmEntry()
       setShowNicknameModal(false)
-    } catch (e: unknown) {
-      const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
-      if (code === 'ENTRY_ALREADY_CONFIRMED') setError('이미 응모했습니다.')
-      else if (code === 'ROOM_FULL') setError('선착순이 마감됐습니다.')
-      else if (code === 'ROOM_CLOSED') setError('이미 종료된 이벤트입니다.')
-      else setError('응모 중 오류가 발생했습니다.')
+    } catch (e) {
+      reportError(e, '가입 중 오류가 발생했습니다.')
     } finally {
       setApplying(false)
     }
@@ -247,7 +300,7 @@ export default function Room() {
               <div style={{ fontSize: 52, fontWeight: 900, color: '#16a34a', letterSpacing: -2 }}>{myEntry.rank}등</div>
             </div>
             <p style={{ fontSize: 14, color: '#9898b2' }}>나의 응모 순위</p>
-            {!isLoggedIn && (
+            {!isLoggedIn && !justAuthed && (
               <p style={{ fontSize: 13, color: '#54546e', marginTop: 12 }}>
                 로그인하면 이 등수를 이어받을 수 있어요.{' '}
                 <button onClick={() => navigate('/login')} style={{ color: '#f55a2b', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'Noto Sans KR', sans-serif" }}>로그인 →</button>
@@ -278,18 +331,25 @@ export default function Room() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 360, boxShadow: '0 24px 64px rgba(0,0,0,.18)' }}>
             <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#f55a2b', letterSpacing: 2, marginBottom: 10 }}>GUEST</div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, letterSpacing: -.5 }}>닉네임 입력</h3>
-            <p style={{ fontSize: 13, color: '#9898b2', marginBottom: 20, lineHeight: 1.6 }}>응모에 사용할 닉네임을 입력해주세요.</p>
+            <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, letterSpacing: -.5 }}>게스트로 응모</h3>
+            <p style={{ fontSize: 13, color: '#9898b2', marginBottom: 20, lineHeight: 1.6 }}>닉네임과 비밀번호로 이 방에 참여해요. 나중에 같은 정보로 다시 들어올 수 있어요.</p>
             <input value={nickname} onChange={e => setNickname(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && nickname.trim()) doApply() }}
               placeholder="닉네임" autoFocus
+              style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 15, fontFamily: "'Noto Sans KR', sans-serif", outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
+              onFocus={e => e.target.style.borderColor = '#f55a2b'}
+              onBlur={e => e.target.style.borderColor = '#eaeaee'}
+            />
+            <input value={password} onChange={e => setPassword(e.target.value)} type="password"
+              onKeyDown={e => { if (e.key === 'Enter' && nickname.trim() && password.trim()) submitGuest() }}
+              placeholder="비밀번호 (4자 이상)"
               style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 15, fontFamily: "'Noto Sans KR', sans-serif", outline: 'none', marginBottom: 16, boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = '#f55a2b'}
               onBlur={e => e.target.style.borderColor = '#eaeaee'}
             />
+            {error && <p style={{ color: '#f55a2b', fontSize: 13, marginTop: -6, marginBottom: 14 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setShowNicknameModal(false)} style={{ flex: 1, padding: '12px', background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", color: '#54546e' }}>취소</button>
-              <button onClick={() => doApply()} disabled={!nickname.trim() || applying} style={{ flex: 1, padding: '12px', background: '#f55a2b', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", color: '#fff', opacity: !nickname.trim() || applying ? 0.5 : 1 }}>응모하기</button>
+              <button onClick={() => { setShowNicknameModal(false); setError(null) }} style={{ flex: 1, padding: '12px', background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", color: '#54546e' }}>취소</button>
+              <button onClick={() => submitGuest()} disabled={!nickname.trim() || password.trim().length < 4 || applying} style={{ flex: 1, padding: '12px', background: '#f55a2b', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", color: '#fff', opacity: !nickname.trim() || password.trim().length < 4 || applying ? 0.5 : 1 }}>{applying ? '처리 중...' : '응모하기'}</button>
             </div>
           </div>
         </div>
