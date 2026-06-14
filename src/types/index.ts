@@ -272,5 +272,6 @@ export interface Entry {
   confirmedAt: string | null
   status: 'CONFIRMED' | 'PENDING'
   ticketToken?: string
+  waitingNumber?: number | null
   requiredFields?: string[]
 }
