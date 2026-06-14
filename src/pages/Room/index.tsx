@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, claimTicket } from '../../api'
+import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, claimTicket } from '../../api'
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
@@ -117,6 +117,7 @@ export default function Room() {
             confirmedAt: null,
             status: entry.entryStatus === 'CONFIRMED' ? 'CONFIRMED' : 'PENDING',
             ticketToken: entry.ticketToken ?? undefined,
+            waitingNumber: entry.waitingNumber ?? null,
           })
         }
       })
@@ -146,8 +147,8 @@ export default function Room() {
         localStorage.removeItem('ticketToken')
         setMyEntry({ rank: res.rank ?? null, confirmedAt: res.appliedAt ?? null, status: 'CONFIRMED' })
       } else {
-        // WAITING 유지 (대기열)
-        setMyEntry({ rank: res.rank ?? null, confirmedAt: null, status: 'PENDING', ticketToken })
+        // 정원 초과 → 대기열(WAITING) 유지
+        setMyEntry({ rank: res.rank ?? null, confirmedAt: null, status: 'PENDING', ticketToken, waitingNumber: res.waitingNumber ?? null })
       }
       return
     }
@@ -158,7 +159,32 @@ export default function Room() {
     } else if (res.ticketToken) {
       // 비로그인 임시점유/대기열 → 티켓 발급 (이후 인증 후 claim 필요)
       localStorage.setItem('ticketToken', res.ticketToken)
-      setMyEntry({ rank: res.reservedRank ?? null, confirmedAt: null, status: 'PENDING', ticketToken: res.ticketToken })
+      setMyEntry({ rank: res.reservedRank ?? null, confirmedAt: null, status: 'PENDING', ticketToken: res.ticketToken, waitingNumber: res.waitingNumber ?? null })
+    }
+  }
+
+  // 내 응모 상태 새로고침 (lazy promotion 트리거 → 대기열 승격 반영)
+  const refreshEntry = async () => {
+    if (!roomCode) return
+    setApplying(true)
+    setError(null)
+    try {
+      const entry = await getMyEntry(roomCode)
+      if (entry.hasApplied) {
+        const confirmed = entry.entryStatus === 'CONFIRMED'
+        if (confirmed) localStorage.removeItem('ticketToken')
+        setMyEntry({
+          rank: entry.myRank ?? null,
+          confirmedAt: null,
+          status: confirmed ? 'CONFIRMED' : 'PENDING',
+          ticketToken: entry.ticketToken ?? undefined,
+          waitingNumber: entry.waitingNumber ?? null,
+        })
+      }
+    } catch (e) {
+      reportError(e, '상태를 불러오지 못했어요.')
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -194,11 +220,19 @@ export default function Room() {
         return
       }
       const ticketToken = localStorage.getItem('ticketToken') || undefined
-      const auth = await guestSignup(roomCode, {
-        roomNickname: nickname.trim(),
-        roomPassword: password.trim(),
-        ticketToken,
-      })
+      const creds = { roomNickname: nickname.trim(), roomPassword: password.trim(), ticketToken }
+      let auth
+      try {
+        auth = await guestSignup(roomCode, creds)
+      } catch (e) {
+        // 이미 있는 닉네임이면 같은 정보로 재로그인 시도 (재참여)
+        const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
+        if (code === 'ROOM_MEMBER_NICKNAME_DUPLICATED' || code === 'ROOM_MEMBER_ALREADY_EXISTS') {
+          auth = await guestLogin(roomCode, creds)
+        } else {
+          throw e
+        }
+      }
       localStorage.setItem('accessToken', auth.accessToken)
       setJustAuthed(true)
       await confirmEntry()
@@ -306,6 +340,22 @@ export default function Room() {
                 <button onClick={() => navigate('/login')} style={{ color: '#f55a2b', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'Noto Sans KR', sans-serif" }}>로그인 →</button>
               </p>
             )}
+          </div>
+        ) : myEntry?.status === 'PENDING' ? (
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ display: 'inline-block', background: '#fff7ed', borderRadius: 16, padding: '24px 48px', marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: '#9898b2', marginBottom: 6, fontFamily: "'DM Mono', monospace", letterSpacing: 1 }}>대기열 예비번호</div>
+              <div style={{ fontSize: 52, fontWeight: 900, color: '#f55a2b', letterSpacing: -2 }}>
+                {myEntry.waitingNumber != null ? `${myEntry.waitingNumber}번` : '대기 중'}
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#54546e', lineHeight: 1.6 }}>
+              정원이 가득 차 대기 중이에요.<br />앞 순번이 빠지면 자동으로 승격돼요.
+            </p>
+            <button onClick={refreshEntry} disabled={applying}
+              style={{ marginTop: 14, background: '#0d0d17', color: '#fff', border: 'none', cursor: applying ? 'not-allowed' : 'pointer', padding: '10px 24px', borderRadius: 10, fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif", opacity: applying ? 0.6 : 1 }}
+            >{applying ? '확인 중...' : '내 순번 새로고침'}</button>
+            {error && <p style={{ color: '#f55a2b', fontSize: 13, marginTop: 10 }}>{error}</p>}
           </div>
         ) : (
           <div style={{ textAlign: 'center', marginBottom: 48 }}>
