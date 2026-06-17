@@ -86,6 +86,11 @@ export default function RoomSettings() {
       .finally(() => setLoading(false))
   }, [roomId])
 
+  // 방 호스트 토큰 (방 생성 시 isHost로 발급받아 저장한 토큰).
+  // PATCH/DELETE /host/rooms/{roomId} 는 잠금 엔드포인트라 이 토큰을 사용한다.
+  // (GET /host/rooms/{roomId} 는 공개라 accessToken 으로도 동작했던 것)
+  const hostToken = localStorage.getItem(`hostToken_${roomId}`)
+
   const handleSave = async () => {
     if (!roomId) return
     setSaving(true)
@@ -99,8 +104,7 @@ export default function RoomSettings() {
       if (form.openAt) body.openAt = new Date(form.openAt).toISOString()
       if (form.participantLimit) body.participantLimit = Number(form.participantLimit)
 
-      // host 관리 엔드포인트는 서비스 회원 accessToken 사용 (인터셉터 기본값)
-      await updateRoom(roomId, body)
+      await updateRoom(roomId, body, hostToken ?? undefined)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch (e) {
@@ -115,7 +119,7 @@ export default function RoomSettings() {
     if (!roomId || deleteInput !== form.eventName) return
     setDeleting(true)
     try {
-      await deleteRoom(roomId)
+      await deleteRoom(roomId, hostToken ?? undefined)
 
       // localStorage에서 roomId 제거
       const ids = JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]
