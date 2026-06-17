@@ -86,10 +86,10 @@ export default function RoomSettings() {
       .finally(() => setLoading(false))
   }, [roomId])
 
-  const hostToken = localStorage.getItem(`hostToken_${roomId}`)
   const handleSave = async () => {
     if (!roomId) return
     setSaving(true)
+    setError(null)
     try {
       const body: UpdateRoomRequest = {
         eventName: form.eventName.trim(),
@@ -99,11 +99,13 @@ export default function RoomSettings() {
       if (form.openAt) body.openAt = new Date(form.openAt).toISOString()
       if (form.participantLimit) body.participantLimit = Number(form.participantLimit)
 
-      await updateRoom(roomId, body, hostToken ?? undefined)
+      // host 관리 엔드포인트는 서비스 회원 accessToken 사용 (인터셉터 기본값)
+      await updateRoom(roomId, body)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
-    } catch {
-      setError('저장 중 오류가 발생했어요.')
+    } catch (e) {
+      const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
+      setError(code ? `저장 실패: ${code}` : '저장 중 오류가 발생했어요.')
     } finally {
       setSaving(false)
     }
@@ -113,7 +115,7 @@ export default function RoomSettings() {
     if (!roomId || deleteInput !== form.eventName) return
     setDeleting(true)
     try {
-      await deleteRoom(roomId, hostToken ?? undefined)
+      await deleteRoom(roomId)
 
       // localStorage에서 roomId 제거
       const ids = JSON.parse(localStorage.getItem('myRoomIds') || '[]') as string[]
