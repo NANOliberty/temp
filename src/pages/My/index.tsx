@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMyRooms } from '../../api'
 import type { HostRoomListItem } from '../../types'
+import { formatServerDate } from '../../utils/datetime'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; bg: string; color: string }> = {
@@ -67,10 +68,7 @@ export default function My() {
     navigate('/', { replace: true })
   }
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '즉시 시작'
-    return new Date(dateStr).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
-  }
+  const formatDate = (dateStr: string | null) => formatServerDate(dateStr)
 
   return (
     <div style={{ minHeight: '100vh', background: '#f7f7f9', fontFamily: "'Noto Sans KR', sans-serif" }}>
