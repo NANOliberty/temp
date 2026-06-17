@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getHostRoom, updateRoom, deleteRoom } from '../../api'
 import type { RoomInfo, UpdateRoomRequest } from '../../types'
+import { UNLIMITED_PARTICIPANTS } from '../../types'
 
 function LogoMark() {
   return (
@@ -102,7 +103,9 @@ export default function RoomSettings() {
         isPublic: form.isPublic,
       }
       if (form.openAt) body.openAt = new Date(form.openAt).toISOString()
-      if (form.participantLimit) body.participantLimit = Number(form.participantLimit)
+      // 무제한이어도 participantLimit 를 항상 전송 (누락 시 백엔드 500 회피).
+      // 무제한은 백엔드가 저장해 둔 sentinel 값(Integer.MAX_VALUE)으로 보낸다.
+      body.participantLimit = form.participantLimit ? Number(form.participantLimit) : UNLIMITED_PARTICIPANTS
 
       await updateRoom(roomId, body, hostToken ?? undefined)
       setSaveSuccess(true)
