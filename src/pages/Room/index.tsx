@@ -4,6 +4,7 @@ import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, cl
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
+import { formatServerDate } from '../../utils/datetime'
 
 function LogoMark() {
   return (
@@ -244,10 +245,7 @@ export default function Room() {
     }
   }
 
-  const formatDate = (d: string | null) => {
-    if (!d) return '즉시 시작'
-    return new Date(d).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
-  }
+  const formatDate = (d: string | null) => formatServerDate(d)
 
   if (loading || !hostChecked) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Noto Sans KR', sans-serif", color: '#9898b2', fontSize: 14 }}>
