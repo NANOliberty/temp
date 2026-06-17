@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getHostRoom, updateRoom, deleteRoom } from '../../api'
 import type { RoomInfo, UpdateRoomRequest } from '../../types'
@@ -70,15 +70,21 @@ export default function RoomSettings() {
     isPublic: true,
   })
 
-  useEffect(() => {
+  // UTC ISO → datetime-local 입력값(로컬 벽시계 시간)
+  const toDatetimeLocal = (iso: string) => {
+    const d = new Date(iso)
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  }
+
+  const loadRoom = useCallback(() => {
     if (!roomId) return
-    getHostRoom(roomId)
+    return getHostRoom(roomId)
       .then(data => {
         setRoom(data)
         setForm({
           eventName: data.eventName,
-          openAt: data.openAt ? new Date(data.openAt).toISOString().slice(0, 16) : '',
-          participantLimit: data.participantLimit && data.participantLimit < 2000000000 ? String(data.participantLimit) : '',
+          openAt: data.openAt ? toDatetimeLocal(data.openAt) : '',
+          participantLimit: data.participantLimit && data.participantLimit < UNLIMITED_PARTICIPANTS ? String(data.participantLimit) : '',
           rankingExposed: data.rankingExposed,
           isPublic: data.isPublic,
         })
@@ -86,6 +92,10 @@ export default function RoomSettings() {
       .catch(() => setError('방 정보를 불러오지 못했어요.'))
       .finally(() => setLoading(false))
   }, [roomId])
+
+  useEffect(() => {
+    loadRoom()
+  }, [loadRoom])
 
   // 방 호스트 토큰 (방 생성 시 isHost로 발급받아 저장한 토큰).
   // PATCH/DELETE /host/rooms/{roomId} 는 잠금 엔드포인트라 이 토큰을 사용한다.
@@ -107,7 +117,11 @@ export default function RoomSettings() {
       // 무제한은 백엔드가 저장해 둔 sentinel 값(Integer.MAX_VALUE)으로 보낸다.
       body.participantLimit = form.participantLimit ? Number(form.participantLimit) : UNLIMITED_PARTICIPANTS
 
-      await updateRoom(roomId, body, hostToken ?? undefined)
+      const result = await updateRoom(roomId, body, hostToken ?? undefined)
+      // 서버가 실제 반영한 필드 확인 (디버깅/검증용)
+      console.log('updatedFields:', result?.updatedFields)
+      // 저장 후 서버 상태로 폼 재동기화 (실제 반영 여부 확인)
+      await loadRoom()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch (e) {
