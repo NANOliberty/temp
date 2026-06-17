@@ -70,9 +70,11 @@ export default function RoomSettings() {
     isPublic: true,
   })
 
-  // UTC ISO → datetime-local 입력값(로컬 벽시계 시간)
+  // 서버 openAt → datetime-local 입력값(로컬 벽시계 시간)
+  // 백엔드가 타임존 표기 없이 UTC(LocalDateTime)를 내려주므로, 표기가 없으면 Z를 붙여 UTC로 해석한다.
   const toDatetimeLocal = (iso: string) => {
-    const d = new Date(iso)
+    const utc = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`
+    const d = new Date(utc)
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   }
 
