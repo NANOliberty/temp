@@ -6,6 +6,8 @@ import type {
   CreateRoomRequest,
   CreateRoomResult,
   UpdateRoomRequest,
+  UpdateRoomResult,
+  ParticipantList,
   EntryOrTicketResult,
   MyEntry,
   EntryTicket,
@@ -46,7 +48,7 @@ export const getHostRoom = (roomId: string) =>
 
 export const updateRoom = (roomId: string, data: UpdateRoomRequest, hostToken?: string) =>
   unwrap(
-    client.patch<ApiResponse<RoomInfo>>(`/host/rooms/${roomId}`, data, {
+    client.patch<ApiResponse<UpdateRoomResult>>(`/host/rooms/${roomId}`, data, {
       headers: hostToken ? { Authorization: `Bearer ${hostToken}` } : undefined,
     }),
   )
@@ -56,8 +58,11 @@ export const deleteRoom = (roomId: string, hostToken?: string) =>
     headers: hostToken ? { Authorization: `Bearer ${hostToken}` } : undefined,
   })
 
-export const getParticipants = (roomId: string) =>
-  unwrap(client.get<ApiResponse<unknown>>(`/host/rooms/${roomId}/participants`))
+export const getParticipants = (
+  roomId: string,
+  params: { status?: string; page?: number; size?: number; sort?: string } = {},
+) =>
+  unwrap(client.get<ApiResponse<ParticipantList>>(`/host/rooms/${roomId}/participants`, { params }))
 
 // ─────────────────────────────────────────────
 // 3. Room Participation (응모 / 방멤버 프로필)
