@@ -106,6 +106,35 @@ export interface UpdateRoomRequest {
   isPublic?: boolean
 }
 
+// PATCH /host/rooms/{roomId} 응답 data
+export interface UpdateRoomResult {
+  roomId: string
+  updatedFields: string[]
+}
+
+// DELETE /host/rooms/{roomId} 응답 data
+export interface DeleteRoomResult {
+  roomId: string
+  roomStatus: RoomStatus
+}
+
+// GET /host/rooms/{roomId}/participants 응답 data
+export interface ParticipantItem {
+  entryId: number
+  rank: number | null
+  name: string
+  memberType: string
+  entryStatus: string
+  appliedAt: string | null
+}
+export interface ParticipantList {
+  roomId: string
+  participants: ParticipantItem[]
+  page: number
+  size: number
+  totalElements: number
+}
+
 // ─────────────────────────────────────────────
 // 응모 / 티켓
 // ─────────────────────────────────────────────
@@ -215,9 +244,12 @@ export interface LinkAuthorizeResult {
 // GET /rooms/{roomCode}/me/account-link
 export interface AccountLinkStatus {
   linked: boolean
-  memberId?: string | null
-  roomMemberId?: string | number
-  socialLinked?: boolean
+  roomCode?: string
+  roomMemberId?: number
+  memberId?: number | null
+  memberType?: string
+  provider?: string
+  linkedAt?: string | null
 }
 
 // GET /auth/oauth/{provider}/link/callback 결과
@@ -234,8 +266,7 @@ export interface LinkCallbackResult {
 // ─────────────────────────────────────────────
 // GET /auth/oauth/{provider}/authorize-url
 export interface AuthorizeUrlResult {
-  authorizeUrl?: string
-  url?: string
+  authorizationUrl: string
 }
 
 // ─────────────────────────────────────────────
