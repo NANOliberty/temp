@@ -4,7 +4,7 @@ import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, cl
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry, ParticipantItem } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
-import { formatServerDate } from '../../utils/datetime'
+import { formatServerDate, parseServerDate } from '../../utils/datetime'
 
 function LogoMark() {
   return (
@@ -84,6 +84,9 @@ export default function Room() {
   const [participants, setParticipants] = useState<ParticipantItem[]>([])
   const [showParticipants, setShowParticipants] = useState(false)
 
+  // 현재 시각 (오픈 여부 판단용)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
   // Step 1: 로그인 상태면 GET /host/rooms 로 host 여부 확인
   useEffect(() => {
     if (!isLoggedIn || !roomCode || USE_MOCK) return
@@ -129,6 +132,16 @@ export default function Room() {
       .catch(() => setError('방을 찾을 수 없습니다.'))
       .finally(() => setLoading(false))
   }, [roomCode, isLoggedIn, isHost, hostChecked])
+
+  // openAt 도달 시 오픈 상태 자동 갱신 (24h 이내일 때 타이머)
+  useEffect(() => {
+    if (!room?.openAt) return
+    const ms = parseServerDate(room.openAt).getTime() - Date.now()
+    if (ms > 0 && ms < 86_400_000) {
+      const t = setTimeout(() => setNowMs(Date.now()), ms + 500)
+      return () => clearTimeout(t)
+    }
+  }, [room?.openAt])
 
   // host 전용: 참여자 목록 로드 (rank 정렬)
   useEffect(() => {
@@ -341,13 +354,20 @@ export default function Room() {
   }
 
   // ── 참여자 뷰 ──
+  // 백엔드 roomStatus 가 openAt 이후에도 READY 로 남는 경우가 있어 openAt 시각도 함께 판단.
+  // openAt 이 없으면(즉시 시작) 바로 오픈으로 간주.
+  const isClosed = room.status === 'CLOSED' || room.status === 'DELETED'
+  const opensAtMs = room.openAt ? parseServerDate(room.openAt).getTime() : 0
+  const canApply = !isClosed && (room.status === 'OPEN' || opensAtMs <= nowMs)
+  const applyLabel = applying ? '응모 중...' : isClosed ? '마감됨' : canApply ? '응모하기' : '오픈 전'
+
   return (
     <div style={{ minHeight: '100vh', background: '#fff', fontFamily: "'Noto Sans KR', sans-serif" }}>
       <NavBar isLoggedIn={isLoggedIn} onLogoClick={() => navigate('/')} onNavClick={() => navigate(isLoggedIn ? '/my' : '/login')} />
       <div style={{ maxWidth: 600, margin: '0 auto', padding: '100px 24px 60px' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{ display: 'inline-block', fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: 2, color: '#f55a2b', textTransform: 'uppercase' as const, background: 'rgba(245,90,43,.09)', border: '1px solid rgba(245,90,43,.2)', borderRadius: 100, padding: '4px 14px', marginBottom: 16 }}>
-            {room.status === 'OPEN' ? '● 진행 중' : room.status === 'READY' ? '대기 중' : '마감'}
+            {isClosed ? '마감' : canApply ? '● 진행 중' : '대기 중'}
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: -1.2, color: '#0d0d17', marginBottom: 8, lineHeight: 1.2 }}>{room.title}</h1>
           <p style={{ fontSize: 13, color: '#9898b2', fontFamily: "'DM Mono', monospace" }}>선착순 시작: {formatDate(room.openAt)}</p>
@@ -384,10 +404,13 @@ export default function Room() {
           </div>
         ) : (
           <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <button onClick={handleApply} disabled={applying || room.status !== 'OPEN'}
-              style={{ background: room.status === 'OPEN' ? '#f55a2b' : '#eaeaee', color: room.status === 'OPEN' ? '#fff' : '#9898b2', border: 'none', cursor: room.status === 'OPEN' && !applying ? 'pointer' : 'not-allowed', padding: '16px 52px', borderRadius: 12, fontSize: 17, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif", opacity: applying ? 0.6 : 1, boxShadow: room.status === 'OPEN' ? '0 8px 24px rgba(245,90,43,.28)' : 'none', marginBottom: 14 }}
-            >{applying ? '응모 중...' : room.status === 'OPEN' ? '응모하기' : '마감됨'}</button>
-            {!isLoggedIn && room.status === 'OPEN' && (
+            <button onClick={handleApply} disabled={applying || !canApply}
+              style={{ background: canApply ? '#f55a2b' : '#eaeaee', color: canApply ? '#fff' : '#9898b2', border: 'none', cursor: canApply && !applying ? 'pointer' : 'not-allowed', padding: '16px 52px', borderRadius: 12, fontSize: 17, fontWeight: 700, fontFamily: "'Noto Sans KR', sans-serif", opacity: applying ? 0.6 : 1, boxShadow: canApply ? '0 8px 24px rgba(245,90,43,.28)' : 'none', marginBottom: 14 }}
+            >{applyLabel}</button>
+            {!canApply && !isClosed && (
+              <p style={{ fontSize: 13, color: '#9898b2', marginBottom: 8 }}>{formatDate(room.openAt)}에 시작해요</p>
+            )}
+            {!isLoggedIn && canApply && (
               <div><button onClick={() => navigate('/login')} style={{ color: '#9898b2', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'Noto Sans KR', sans-serif", textDecoration: 'underline' }}>회원 로그인/가입</button></div>
             )}
             {error && <p style={{ color: '#f55a2b', fontSize: 13, marginTop: 10 }}>{error}</p>}
