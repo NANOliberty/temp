@@ -6,6 +6,11 @@ import type { Room, RankingItem, Entry, ParticipantItem } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
 import { formatServerDate, parseServerDate } from '../../utils/datetime'
 
+// 백엔드 에러 envelope 에서 error.code 추출
+function errCode(e: unknown): string | undefined {
+  return (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
+}
+
 function LogoMark() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -152,7 +157,7 @@ export default function Room() {
   }, [isHost, roomCode, hostChecked])
 
   const reportError = (e: unknown, fallback: string) => {
-    const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
+    const code = errCode(e)
     if (code === 'ENTRY_ALREADY_CONFIRMED') setError('이미 응모했습니다.')
     else if (code === 'ROOM_FULL') setError('선착순이 마감됐습니다.')
     else if (code === 'ROOM_CLOSED' || code === 'ROOM_NOT_OPEN') setError('지금은 응모할 수 없는 이벤트입니다.')
@@ -251,13 +256,18 @@ export default function Room() {
       try {
         // isHost 를 생략하면 백엔드가 500(null 처리) 나므로 명시적으로 false 전송
         auth = await guestSignup(roomCode, { ...creds, isHost: false })
-      } catch (e) {
-        // 이미 있는 닉네임이면 같은 정보로 재로그인 시도 (재참여)
-        const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
-        if (code === 'ROOM_MEMBER_NICKNAME_DUPLICATED' || code === 'ROOM_MEMBER_ALREADY_EXISTS') {
+      } catch {
+        // 가입 실패(닉네임 중복 등 — 백엔드가 500을 주기도 함) → 같은 자격으로 로그인 재시도(재참여)
+        try {
           auth = await guestLogin(roomCode, creds)
-        } else {
-          throw e
+        } catch (loginErr) {
+          const lcode = errCode(loginErr)
+          if (lcode === 'ROOM_MEMBER_PASSWORD_MISMATCH' || lcode === 'INVALID_PASSWORD') {
+            setError('이미 사용 중인 닉네임이에요. 본인이면 같은 비밀번호로, 아니면 다른 닉네임으로 시도해주세요.')
+          } else {
+            setError('이미 사용 중인 닉네임이거나 입력이 올바르지 않아요. 다른 닉네임으로 시도해주세요.')
+          }
+          return
         }
       }
       localStorage.setItem('accessToken', auth.accessToken)
