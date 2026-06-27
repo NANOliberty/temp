@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, claimTicket } from '../../api'
+import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, claimTicket, getParticipants } from '../../api'
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
-import type { Room, RankingItem, Entry } from '../../types'
+import type { Room, RankingItem, Entry, ParticipantItem } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
 import { formatServerDate } from '../../utils/datetime'
 
@@ -80,6 +80,10 @@ export default function Room() {
   // 게스트 가입 직후엔 로그인 상태이지만 isLoggedIn(초기 렌더값)은 갱신되지 않으므로 별도 추적
   const [justAuthed, setJustAuthed] = useState(false)
 
+  // host: 참여자 목록
+  const [participants, setParticipants] = useState<ParticipantItem[]>([])
+  const [showParticipants, setShowParticipants] = useState(false)
+
   // Step 1: 로그인 상태면 GET /host/rooms 로 host 여부 확인
   useEffect(() => {
     if (!isLoggedIn || !roomCode || USE_MOCK) return
@@ -125,6 +129,14 @@ export default function Room() {
       .catch(() => setError('방을 찾을 수 없습니다.'))
       .finally(() => setLoading(false))
   }, [roomCode, isLoggedIn, isHost, hostChecked])
+
+  // host 전용: 참여자 목록 로드 (rank 정렬)
+  useEffect(() => {
+    if (!isHost || !roomCode || USE_MOCK || !hostChecked) return
+    getParticipants(roomCode, { size: 100, sort: 'rank' })
+      .then(data => setParticipants(data.participants ?? []))
+      .catch(() => {})
+  }, [isHost, roomCode, hostChecked])
 
   const reportError = (e: unknown, fallback: string) => {
     const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
@@ -263,6 +275,11 @@ export default function Room() {
   // ── HOST 뷰 ──
   if (isHost) {
     const shareUrl = `${window.location.origin}/r/${roomCode}`
+    // 확정(CONFIRMED) 응모만 rank 순으로 랭킹 표시
+    const confirmedRanking: RankingItem[] = participants
+      .filter(p => p.entryStatus === 'CONFIRMED' && p.rank != null)
+      .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+      .map(p => ({ rank: p.rank as number, name: p.name, confirmedAt: formatServerDate(p.appliedAt, '-') }))
     const statusMap: Record<string, { label: string; color: string; bg: string }> = {
       READY:  { label: '대기 중', color: '#3b82f6', bg: '#eff6ff' },
       OPEN:   { label: '진행 중', color: '#16a34a', bg: '#dcfce7' },
@@ -304,11 +321,21 @@ export default function Room() {
           <div style={{ background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 16, padding: '28px 32px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0d0d17', letterSpacing: -.3 }}>랭킹</h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9898b2', fontFamily: "'Noto Sans KR', sans-serif", textDecoration: 'underline' }}>전체 참가자 보기 →</button>
+              {participants.length > 0 && (
+                <button onClick={() => setShowParticipants(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9898b2', fontFamily: "'Noto Sans KR', sans-serif", textDecoration: 'underline' }}>전체 참가자 보기 →</button>
+              )}
             </div>
-            <RankingList rankings={rankings} />
+            {confirmedRanking.length > 0 ? (
+              <RankingList rankings={confirmedRanking} />
+            ) : (
+              <p style={{ fontSize: 13, color: '#9898b2', textAlign: 'center', padding: '20px 0' }}>아직 확정된 응모가 없어요.</p>
+            )}
           </div>
         </div>
+
+        {showParticipants && (
+          <ParticipantsModal participants={participants} onClose={() => setShowParticipants(false)} />
+        )}
       </div>
     )
   }
@@ -416,6 +443,40 @@ function RankingList({ rankings, myRank }: { rankings: RankingItem[], myRank?: n
           <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#9898b2' }}>{r.confirmedAt}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+const ENTRY_STATUS_LABEL: Record<string, { label: string; color: string; bg: string }> = {
+  CONFIRMED:    { label: '확정',   color: '#16a34a', bg: '#dcfce7' },
+  WAITING:      { label: '대기',   color: '#d97706', bg: '#fef3c7' },
+  PENDING_AUTH: { label: '인증 전', color: '#3b82f6', bg: '#eff6ff' },
+  EXPIRED:      { label: '만료',   color: '#6b7280', bg: '#f3f4f6' },
+  CANCELED:     { label: '취소',   color: '#6b7280', bg: '#f3f4f6' },
+}
+
+function ParticipantsModal({ participants, onClose }: { participants: ParticipantItem[], onClose: () => void }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: '28px', width: '100%', maxWidth: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.18)', fontFamily: "'Noto Sans KR', sans-serif" }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 800, color: '#0d0d17' }}>전체 참가자 <span style={{ color: '#9898b2', fontWeight: 600 }}>{participants.length}</span></h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9898b2', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {participants.map(p => {
+            const s = ENTRY_STATUS_LABEL[p.entryStatus] ?? { label: p.entryStatus, color: '#6b7280', bg: '#f3f4f6' }
+            return (
+              <div key={p.entryId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: '#f7f7f9', borderRadius: 10 }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 14, width: 28, textAlign: 'right', flexShrink: 0, color: '#9898b2' }}>{p.rank ?? '-'}</span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: '#0d0d17', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: s.bg, color: s.color, flexShrink: 0 }}>{s.label}</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#9898b2', flexShrink: 0 }}>{formatServerDate(p.appliedAt, '-')}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
