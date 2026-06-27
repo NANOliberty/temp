@@ -249,7 +249,8 @@ export default function Room() {
       const creds = { roomNickname: nickname.trim(), roomPassword: password.trim(), ticketToken }
       let auth
       try {
-        auth = await guestSignup(roomCode, creds)
+        // isHost 를 생략하면 백엔드가 500(null 처리) 나므로 명시적으로 false 전송
+        auth = await guestSignup(roomCode, { ...creds, isHost: false })
       } catch (e) {
         // 이미 있는 닉네임이면 같은 정보로 재로그인 시도 (재참여)
         const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
