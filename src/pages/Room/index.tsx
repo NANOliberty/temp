@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, claimTicket, getParticipants } from '../../api'
+import { postEntry, getRoom, getMyEntry, getMyRooms, guestSignup, guestLogin, claimTicket, getParticipants, patchMyProfile } from '../../api'
 import { MOCK_ROOM, MOCK_RANKINGS, MOCK_MY_ENTRY, USE_MOCK } from '../../api/mock'
 import type { Room, RankingItem, Entry, ParticipantItem } from '../../types'
 import { UNLIMITED_PARTICIPANTS } from '../../types'
@@ -9,6 +9,14 @@ import { formatServerDate, parseServerDate } from '../../utils/datetime'
 // 백엔드 에러 envelope 에서 error.code 추출
 function errCode(e: unknown): string | undefined {
   return (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code
+}
+
+// 필수 프로필 필드 키 → 한국어 라벨
+const PROFILE_LABEL: Record<string, string> = {
+  name: '이름',
+  phoneNumber: '전화번호',
+  phone: '전화번호',
+  email: '이메일',
 }
 
 function LogoMark() {
@@ -219,6 +227,29 @@ export default function Room() {
     }
   }
 
+  // 응모 시도. 필수정보 부족(REQUIRED_PROFILE_MISSING)이면 무엇이 필요한지 안내.
+  // (현재 백엔드에 필수정보 입력 엔드포인트가 없어 안내까지만 가능)
+  const runEntry = async () => {
+    if (!roomCode) return
+    try {
+      await confirmEntry()
+      setShowNicknameModal(false)
+    } catch (e) {
+      if (errCode(e) === 'REQUIRED_PROFILE_MISSING') {
+        setShowNicknameModal(false)
+        try {
+          const p = await patchMyProfile(roomCode)
+          const fields = (p.missingRequiredFields ?? []).map(f => PROFILE_LABEL[f] ?? f)
+          setError(fields.length ? `응모하려면 ${fields.join(', ')} 정보가 필요해요.` : '응모에 필요한 정보가 부족해요.')
+        } catch {
+          setError('응모에 필요한 정보가 부족해요.')
+        }
+      } else {
+        reportError(e, '응모 중 오류가 발생했습니다.')
+      }
+    }
+  }
+
   // 응모 버튼: 인증된 사용자면 바로 확정, 아니면 게스트 가입 모달
   const handleApply = async () => {
     if (!isLoggedIn && !justAuthed) { setShowNicknameModal(true); return }
@@ -230,9 +261,7 @@ export default function Room() {
         setMyEntry({ rank: 13, confirmedAt: new Date().toISOString(), status: 'CONFIRMED' })
         return
       }
-      await confirmEntry()
-    } catch (e) {
-      reportError(e, '응모 중 오류가 발생했습니다.')
+      await runEntry()
     } finally {
       setApplying(false)
     }
@@ -272,8 +301,7 @@ export default function Room() {
       }
       localStorage.setItem('accessToken', auth.accessToken)
       setJustAuthed(true)
-      await confirmEntry()
-      setShowNicknameModal(false)
+      await runEntry()
     } catch (e) {
       reportError(e, '가입 중 오류가 발생했습니다.')
     } finally {
