@@ -97,6 +97,11 @@ export default function Room() {
   const [participants, setParticipants] = useState<ParticipantItem[]>([])
   const [showParticipants, setShowParticipants] = useState(false)
 
+  // 필수정보 입력 모달
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [missingFields, setMissingFields] = useState<string[]>([])
+  const [profileValues, setProfileValues] = useState<Record<string, string>>({})
+
   // 현재 시각 (오픈 여부 판단용)
   const [nowMs, setNowMs] = useState(() => Date.now())
 
@@ -227,26 +232,54 @@ export default function Room() {
     }
   }
 
-  // 응모 시도. 필수정보 부족(REQUIRED_PROFILE_MISSING)이면 무엇이 필요한지 안내.
-  // (현재 백엔드에 필수정보 입력 엔드포인트가 없어 안내까지만 가능)
+  const openProfileModal = (fields: string[]) => {
+    setMissingFields(fields)
+    setProfileValues(Object.fromEntries(fields.map(f => [f, ''])))
+    setError(null)
+    setShowProfileModal(true)
+  }
+
+  // 응모 시도. 필수정보 부족(REQUIRED_PROFILE_MISSING)이면 입력 모달을 띄운다.
   const runEntry = async () => {
     if (!roomCode) return
     try {
       await confirmEntry()
       setShowNicknameModal(false)
+      setShowProfileModal(false)
     } catch (e) {
       if (errCode(e) === 'REQUIRED_PROFILE_MISSING') {
         setShowNicknameModal(false)
         try {
           const p = await patchMyProfile(roomCode)
-          const fields = (p.missingRequiredFields ?? []).map(f => PROFILE_LABEL[f] ?? f)
-          setError(fields.length ? `응모하려면 ${fields.join(', ')} 정보가 필요해요.` : '응모에 필요한 정보가 부족해요.')
+          openProfileModal(p.missingRequiredFields ?? [])
         } catch {
-          setError('응모에 필요한 정보가 부족해요.')
+          setError('응모에 필요한 정보를 불러오지 못했어요.')
         }
       } else {
         reportError(e, '응모 중 오류가 발생했습니다.')
       }
+    }
+  }
+
+  // 필수정보 저장 후 응모 재시도
+  const submitProfile = async () => {
+    if (!roomCode) return
+    setError(null)
+    setApplying(true)
+    try {
+      const p = await patchMyProfile(roomCode, profileValues)
+      const still = p.missingRequiredFields ?? []
+      if (still.length > 0) {
+        setMissingFields(still)
+        setError('아직 입력이 필요한 항목이 있어요.')
+        return
+      }
+      setShowProfileModal(false)
+      await runEntry()
+    } catch (e) {
+      reportError(e, '정보 저장 중 오류가 발생했습니다.')
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -491,6 +524,61 @@ export default function Room() {
           </div>
         </div>
       )}
+
+      {showProfileModal && (
+        <ProfileModal
+          fields={missingFields}
+          values={profileValues}
+          onChange={(k, v) => setProfileValues(p => ({ ...p, [k]: v }))}
+          onSubmit={submitProfile}
+          onClose={() => { setShowProfileModal(false); setError(null) }}
+          applying={applying}
+          error={error}
+        />
+      )}
+    </div>
+  )
+}
+
+function profileInputType(field: string): string {
+  if (/mail/i.test(field)) return 'email'
+  if (/phone|tel|mobile|hp/i.test(field)) return 'tel'
+  return 'text'
+}
+
+function ProfileModal({ fields, values, onChange, onSubmit, onClose, applying, error }: {
+  fields: string[]
+  values: Record<string, string>
+  onChange: (key: string, value: string) => void
+  onSubmit: () => void
+  onClose: () => void
+  applying: boolean
+  error: string | null
+}) {
+  const allFilled = fields.every(f => (values[f] ?? '').trim().length > 0)
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 380, boxShadow: '0 24px 64px rgba(0,0,0,.18)', fontFamily: "'Noto Sans KR', sans-serif" }}>
+        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#f55a2b', letterSpacing: 2, marginBottom: 10 }}>PROFILE</div>
+        <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, letterSpacing: -.5 }}>추가 정보 입력</h3>
+        <p style={{ fontSize: 13, color: '#9898b2', marginBottom: 20, lineHeight: 1.6 }}>이 방은 응모에 아래 정보가 필요해요.</p>
+        {fields.map(f => (
+          <div key={f} style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#54546e', marginBottom: 6 }}>{PROFILE_LABEL[f] ?? f}</label>
+            <input value={values[f] ?? ''} onChange={e => onChange(f, e.target.value)} type={profileInputType(f)}
+              placeholder={PROFILE_LABEL[f] ?? f}
+              style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 15, fontFamily: "'Noto Sans KR', sans-serif", outline: 'none', boxSizing: 'border-box' }}
+              onFocus={e => e.target.style.borderColor = '#f55a2b'}
+              onBlur={e => e.target.style.borderColor = '#eaeaee'}
+            />
+          </div>
+        ))}
+        {error && <p style={{ color: '#f55a2b', fontSize: 13, marginTop: 4, marginBottom: 12 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '12px', background: '#fff', border: '1.5px solid #eaeaee', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", color: '#54546e' }}>취소</button>
+          <button onClick={onSubmit} disabled={!allFilled || applying} style={{ flex: 1, padding: '12px', background: '#f55a2b', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: allFilled && !applying ? 'pointer' : 'not-allowed', fontFamily: "'Noto Sans KR', sans-serif", color: '#fff', opacity: !allFilled || applying ? 0.5 : 1 }}>{applying ? '저장 중...' : '저장하고 응모'}</button>
+        </div>
+      </div>
     </div>
   )
 }
